@@ -1,14 +1,14 @@
 port = 8080
 root = "liquidev.net/smugdancer"
-gifski = "/usr/bin/gifski"
 
-[cache]
-dir = "cache"
+[gif_service]
+gifski = "/usr/bin/gifski"
+cache_dir = "cache"
 
 # Development:
-# limit = 16777216
-# purge_limit = 8388608
+cache_limit = 16777216
+cache_purge_limit = 8388608
 
 # Production:
-limit = 268435456
-purge_limit = 234881024
+# cache_limit = 268435456
+# cache_purge_limit = 234881024
