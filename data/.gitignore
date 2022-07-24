@@ -1,0 +1,2 @@
+# NOTE: This weighs over 400 MiB. Maybe keeping all that in a Git repository isn't the brightest idea.
+frames/*.png
