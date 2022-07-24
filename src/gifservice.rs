@@ -3,6 +3,7 @@
 use std::{
     io,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use axum::{http::StatusCode, Json};
@@ -45,38 +46,48 @@ impl GifServiceConfig {
 }
 
 pub struct GifService {
-    config: GifServiceConfig,
+    config: Arc<GifServiceConfig>,
     frame_count: usize,
-    requests: mpsc::Receiver<EncodeRequest>,
+    render_requests: mpsc::Sender<RenderRequest>,
 }
 
 impl GifService {
     const FRAMES_PATH: &'static str = "data/frames";
 
     pub fn spawn(config: GifServiceConfig, frame_count: usize) -> GifServiceHandle {
-        let (req_tx, req_rx) = mpsc::channel(32);
+        let (gif_tx, mut gif_rx) = mpsc::channel(32);
+        let (render_tx, mut render_rx) = mpsc::channel(32);
 
-        let mut service = GifService {
-            config,
+        let service = Arc::new(GifService {
+            config: Arc::new(config),
             frame_count,
-            requests: req_rx,
-        };
+            render_requests: render_tx,
+        });
+        // NOTE: Render requests are handled in a queue, unlike GIF requests which are handled
+        // concurrently.
+        tokio::spawn({
+            let config = Arc::clone(&service.config);
+            async move {
+                tracing::info!("render task is ready");
+                while let Some(request) = render_rx.recv().await {
+                    Self::handle_render_request(request, frame_count, &config).await;
+                }
+            }
+        });
         tokio::spawn(async move {
-            tracing::info!("GIF service is ready");
-            // NOTE: Only one request is handled at a time. We treat the channel as a queue so as
-            // not to overload the server by encoding GIFs. Maybe in the future we can improve on
-            // this, especially if I can rent a better VPS.
-            while let Some(request) = service.requests.recv().await {
-                service.handle_request(request).await;
+            tracing::info!("GIF task is ready");
+            while let Some(request) = gif_rx.recv().await {
+                let service = Arc::clone(&service);
+                tokio::spawn(async move { service.handle_gif_request(request).await });
             }
         });
 
-        GifServiceHandle { requests: req_tx }
+        GifServiceHandle { requests: gif_tx }
     }
 
-    async fn handle_request(&mut self, request: EncodeRequest) {
-        let EncodeRequest { speed, responder } = request;
-        let _ = responder.send(self.handle_request_inner(speed).await);
+    async fn handle_gif_request(&self, request: GifRequest) {
+        let GifRequest { speed, responder } = request;
+        let _ = responder.send(self.handle_gif_request_inner(speed).await);
     }
 
     fn get_cached_filename(speed: f64) -> String {
@@ -84,7 +95,7 @@ impl GifService {
         format!("{bits:x}.gif")
     }
 
-    async fn handle_request_inner(&mut self, speed: f64) -> Result<Vec<u8>, Error> {
+    async fn handle_gif_request_inner(&self, speed: f64) -> Result<Vec<u8>, Error> {
         tracing::debug!("handling request for {speed}x speed");
         let cached_filename = self.config.gif_dir().join(Self::get_cached_filename(speed));
 
@@ -95,7 +106,15 @@ impl GifService {
             }
 
             tracing::debug!("this speed is not cached yet, rendering");
-            let gif_file = Self::render_speed(speed, self.frame_count, &self.config).await?;
+            let (tx, rx) = oneshot::channel();
+            self.render_requests
+                .send(RenderRequest {
+                    speed,
+                    responder: tx,
+                })
+                .await
+                .map_err(|_| Error::GifServiceOffline)?;
+            let gif_file = rx.await.map_err(|_| Error::EncodingJobExited)??;
             tokio::fs::rename(&gif_file, &cached_filename)
                 .await
                 .map_err(Error::CannotRenameGif)?;
@@ -105,6 +124,15 @@ impl GifService {
             .await
             .map_err(Error::CannotReadGif)?;
         Ok(file)
+    }
+
+    async fn handle_render_request(
+        request: RenderRequest,
+        frame_count: usize,
+        config: &GifServiceConfig,
+    ) {
+        let result = Self::render_speed(request.speed, frame_count, config).await;
+        let _ = request.responder.send(result);
     }
 
     async fn render_speed(
@@ -198,21 +226,26 @@ impl GifService {
     }
 }
 
-struct EncodeRequest {
+struct GifRequest {
     speed: f64,
     responder: oneshot::Sender<Result<Vec<u8>, Error>>,
 }
 
+struct RenderRequest {
+    speed: f64,
+    responder: oneshot::Sender<Result<PathBuf, Error>>,
+}
+
 #[derive(Clone)]
 pub struct GifServiceHandle {
-    requests: mpsc::Sender<EncodeRequest>,
+    requests: mpsc::Sender<GifRequest>,
 }
 
 impl GifServiceHandle {
     pub async fn request_speed(&self, speed: f64) -> Result<Vec<u8>, Error> {
         let (tx, rx) = oneshot::channel();
         self.requests
-            .send(EncodeRequest {
+            .send(GifRequest {
                 speed,
                 responder: tx,
             })

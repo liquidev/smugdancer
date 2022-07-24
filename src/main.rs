@@ -101,60 +101,6 @@ async fn render_animation(
         .headers_mut()
         .insert("Content-Type", "image/gif".try_into().unwrap());
     Ok(response)
-
-    // let cached_filename = state.cache_gif_dir.join(format!("{}.gif", bpm));
-
-    // if !cached_filename.exists() {
-    //     flush_cache(&state.cache_config, &state.cache_gif_dir)
-    //         .await
-    //         .map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, e))?;
-
-    //     tracing::debug!("this bpm is not cached yet");
-    //     let output_frames = (state.frame_count as f64 / speed).floor() as usize;
-    //     if output_frames <= 1 {
-    //         tracing::debug!("requested bpm is too fast");
-    //         return Err(error(
-    //             StatusCode::BAD_REQUEST,
-    //             "Hat Kid got incarcerated for speeding on a highway.",
-    //         ));
-    //     }
-    //     if output_frames > 900 {
-    //         tracing::debug!("requested bpm is too slow");
-    //         return Err(error(StatusCode::BAD_REQUEST, "yawn…"));
-    //     }
-
-    //     let mut accumulator: f64 = 0.0;
-    //     let input_filenames: Vec<_> = (0..output_frames)
-    //         .filter_map(|_| {
-    //             let input_frame = accumulator.floor() as usize + 1;
-    //             accumulator += speed;
-    //             let path = Path::new(FRAMES_PATH).join(format!("{input_frame}.png"));
-    //             path.to_str().map(|x| x.to_owned())
-    //         })
-    //         .collect();
-
-    //     let output_filename = format!("{}.gif", generate_unique_filename(32));
-    //     let output_filename = state.cache_work_dir.join(&output_filename);
-    //     Command::new(&state.gifski)
-    //         .arg("--fps")
-    //         .arg("50")
-    //         .arg("--height")
-    //         .arg("360")
-    //         .arg("--output")
-    //         .arg(&output_filename)
-    //         .arg("--no-sort")
-    //         .args(&input_filenames)
-    //         .spawn()
-    //         .map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, e))?
-    //         .wait()
-    //         .await
-    //         .map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, e))?;
-
-    //     tokio::fs::rename(&output_filename, &cached_filename)
-    //         .await
-    //         .map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    //     tracing::debug!("render of {bpm} bpm complete");
-    // }
 }
 
 #[tokio::main]
