@@ -14,14 +14,19 @@
 
    <h2>SYNOPSIS</h2>
    <p>
+   <pre>GET {{root}}/:bpm.gif</pre>
    <pre>GET {{root}}/:bpm</pre>
    where <code>:bpm</code> is a floating point number
    </p>
 
    <h2>DESCRIPTION</h2>
    <p>
-      Upon valid use, the <code>GET /:bpm</code> endpoint will return a GIF of the smug dance, synchronized to the
-      provided tempo. Generating the GIF might take a while, so be patient.
+      Upon valid use, the <code>GET /:bpm.gif</code> and <code>GET /:bpm</code> endpoints will return a GIF of the smug
+      dance, synchronized to the provided tempo. Generating the GIF might take a while, so be patient.
+   </p>
+   <p>
+      The <code>.gif</code> suffix version is provided for apps like Discord, which will not play the GIF unless the URL
+      contains the <code>.gif</code> extension.
    </p>
    <p>
       The minimum supported tempo is {{minimum_bpm}} BPM. Lower values will work, but the resulting GIF might (will,
@@ -29,9 +34,10 @@
       Besides, what kind of person would want to dance to music that's slower than 60 BPM?
    </p>
    <p>
-      If the BPM cannot be parsed into a floating point number (eg. contains letters), 400 Bad Request and an error
-      message will be returned. If the BPM is out of usable range (ie. would take way too long to process, or would be a
-      still picture), 400 is returned with a JSON error code like <code>{"message":"error message goes here"}</code>.
+      If an error occurs, a JSON response in the form of an object <code>{"error":"message"}</code> will be returned.
+      The HTTP status code will be 400 Bad Request if it's user error, or 500 Internal Server Error if something goes
+      wrong internally (if it does, please let me know.) <strong>Do note that these error messages are provided for
+         display in user interfaces only and their values should not be relied upon.</strong>
    </p>
 
    <h2>EXAMPLES</h2>

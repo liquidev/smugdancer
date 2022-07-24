@@ -5,6 +5,7 @@ use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
     extract::Path as UrlPath,
+    http::StatusCode,
     response::{Html, IntoResponse, Response},
     routing::get,
     Router,
@@ -14,7 +15,7 @@ use gifservice::{GifServiceConfig, GifServiceHandle};
 use handlebars::Handlebars;
 use serde::{Deserialize, Serialize};
 
-use crate::gifservice::GifService;
+use crate::{common::error_response, gifservice::GifService};
 
 const CONFIG_PATH: &str = "smugdancer.toml";
 const FRAMES_PATH: &str = "data/frames";
@@ -84,8 +85,16 @@ async fn index(state: Arc<State>) -> Html<String> {
 
 async fn render_animation(
     state: Arc<State>,
-    UrlPath(unquantized_bpm): UrlPath<f64>,
+    UrlPath(query): UrlPath<String>,
 ) -> Result<Response, ErrorResponse> {
+    let query = query.strip_suffix(".gif").unwrap_or(&query);
+    let unquantized_bpm: f64 = query.parse().map_err(|e| {
+        error_response(
+            StatusCode::BAD_REQUEST,
+            format!("Cannot parse BPM value: {e}"),
+        )
+    })?;
+
     let bpm = quantize_bpm_to_nearest_supported(unquantized_bpm);
     tracing::debug!("serving {bpm} bpm (quantized from {unquantized_bpm} bpm)");
 
@@ -141,10 +150,10 @@ async fn main() {
             }),
         )
         .route(
-            "/:bpm",
+            "/:query",
             get({
                 let state = Arc::clone(&state);
-                move |bpm| render_animation(state, bpm)
+                move |query| render_animation(state, query)
             }),
         );
 

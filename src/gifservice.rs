@@ -47,7 +47,6 @@ impl GifServiceConfig {
 
 pub struct GifService {
     config: Arc<GifServiceConfig>,
-    frame_count: usize,
     render_requests: mpsc::Sender<RenderRequest>,
 }
 
@@ -60,7 +59,6 @@ impl GifService {
 
         let service = Arc::new(GifService {
             config: Arc::new(config),
-            frame_count,
             render_requests: render_tx,
         });
         // NOTE: Render requests are handled in a queue, unlike GIF requests which are handled
