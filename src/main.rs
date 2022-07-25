@@ -154,8 +154,14 @@ async fn render_animation(
 
     let ip = if state.config.reverse_proxy {
         headers
-            .get("X-Forwarded-For")
-            .and_then(|val| IpAddr::from_str(val.to_str().unwrap()).ok())
+            .get("x-forwarded-for")
+            .and_then(|val| {
+                IpAddr::from_str(
+                    val.to_str()
+                        .expect("cannot parse X-Forwarded-For IP address"),
+                )
+                .ok()
+            })
             .unwrap_or(addr.ip())
     } else {
         addr.ip()
@@ -167,8 +173,6 @@ async fn render_animation(
             "serving {bpm} bpm (quantized from {unquantized_bpm} bpm) to {}",
             ip
         );
-
-        tracing::debug!("headers: {:#?}", headers);
 
         let speed = bpm / state.source_bpm;
         let file = state
