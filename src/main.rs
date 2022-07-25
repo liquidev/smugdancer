@@ -1,14 +1,17 @@
+#![allow(clippy::or_fun_call)]
+
 mod common;
 mod gifservice;
 
 use std::{
     net::{IpAddr, SocketAddr},
+    str::FromStr,
     sync::Arc,
 };
 
 use axum::{
     extract::{ConnectInfo, Path as UrlPath},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Response},
     routing::get,
     Extension, Router,
@@ -35,6 +38,11 @@ struct Config {
     port: u16,
     /// The root URL that's shown on the documentation website.
     root: String,
+    /// Set to `true` if the server is behind a reverse proxy like nginx.
+    /// This makes it use the X-Forwarded-For header for rate limiting instead of the connection's
+    /// IP address.
+    #[serde(default)]
+    reverse_proxy: bool,
 
     gif_service: GifServiceConfig,
 }
@@ -109,6 +117,8 @@ fn render_index(config: TemplateDataConfig) -> Pages {
 }
 
 struct State {
+    /// The config file.
+    config: Config,
     /// The index containing documentation.
     pages: Pages,
     /// The BPM of the source animation.
@@ -131,6 +141,7 @@ async fn man(Extension(state): Extension<Arc<State>>) -> Html<String> {
 async fn render_animation(
     Extension(state): Extension<Arc<State>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     UrlPath(query): UrlPath<String>,
 ) -> Result<Response, ErrorResponse> {
     let query = query.strip_suffix(".gif").unwrap_or(&query);
@@ -141,12 +152,23 @@ async fn render_animation(
         )
     })?;
 
-    if state.waiting_clients.insert(addr.ip()) {
+    let ip = if state.config.reverse_proxy {
+        headers
+            .get("X-Forwarded-For")
+            .and_then(|val| IpAddr::from_str(val.to_str().unwrap()).ok())
+            .unwrap_or(addr.ip())
+    } else {
+        addr.ip()
+    };
+
+    if state.waiting_clients.insert(ip) {
         let bpm = quantize_bpm_to_nearest_supported(unquantized_bpm);
         tracing::debug!(
             "serving {bpm} bpm (quantized from {unquantized_bpm} bpm) to {}",
-            addr.ip()
+            ip
         );
+
+        tracing::debug!("X-Forwarded-For: {:?}", headers.get("X-Forwarded-For"));
 
         let speed = bpm / state.source_bpm;
         let file = state
@@ -159,12 +181,12 @@ async fn render_animation(
         response
             .headers_mut()
             .insert("Content-Type", "image/gif".try_into().unwrap());
-        state.waiting_clients.remove(&addr.ip());
+        state.waiting_clients.remove(&ip);
         Ok(response)
     } else {
         tracing::debug!(
             "{} (requesting {unquantized_bpm} bpm) is being rate limited",
-            addr.ip()
+            ip
         );
         Err(error_response(StatusCode::TOO_MANY_REQUESTS, "Hey you, behave yourself! We only have one Hat Kid, don't spam requests at her like that. Please wait until your previous GIF arrives."))
     }
@@ -188,14 +210,16 @@ async fn main() {
     tracing::debug!("found {frame_count} animation frames");
     tracing::debug!("given {WAVE_COUNT} waves at {ANIMATION_FPS} fps, the minimum bpm for playback at full framerate is {minimum_bpm}");
 
-    let gif_service =
-        GifService::spawn(config.gif_service, frame_count).expect("cannot spawn GIF service");
+    let gif_service = GifService::spawn(config.gif_service.clone(), frame_count)
+        .expect("cannot spawn GIF service");
 
+    let port = config.port;
     let state = Arc::new(State {
         pages: render_index(TemplateDataConfig {
-            root: config.root,
+            root: config.root.clone(),
             minimum_bpm,
         }),
+        config,
         source_bpm: minimum_bpm,
         gif_service,
         waiting_clients: DashSet::new(),
@@ -208,7 +232,7 @@ async fn main() {
         .route("/:query", get(render_animation))
         .layer(Extension(state));
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!("listening on {addr}");
     axum::Server::bind(&addr)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
