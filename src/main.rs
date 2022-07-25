@@ -1,16 +1,20 @@
 mod common;
 mod gifservice;
 
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    net::{IpAddr, SocketAddr},
+    sync::Arc,
+};
 
 use axum::{
-    extract::Path as UrlPath,
+    extract::{ConnectInfo, Path as UrlPath},
     http::StatusCode,
     response::{Html, IntoResponse, Response},
     routing::get,
     Extension, Router,
 };
 use common::ErrorResponse;
+use dashmap::DashSet;
 use gifservice::{GifServiceConfig, GifServiceHandle};
 use handlebars::Handlebars;
 use serde::{Deserialize, Serialize};
@@ -107,12 +111,13 @@ fn render_index(config: TemplateDataConfig) -> Pages {
 struct State {
     /// The index containing documentation.
     pages: Pages,
-
     /// The BPM of the source animation.
     source_bpm: f64,
-
     /// The GIF service.
     gif_service: GifServiceHandle,
+    /// A map of IP addresses that are currently waiting in the render queue. These IPs will be
+    /// rate limited so as not to kill the server with requests.
+    waiting_clients: DashSet<IpAddr>,
 }
 
 async fn index(Extension(state): Extension<Arc<State>>) -> Html<String> {
@@ -125,6 +130,7 @@ async fn man(Extension(state): Extension<Arc<State>>) -> Html<String> {
 
 async fn render_animation(
     Extension(state): Extension<Arc<State>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     UrlPath(query): UrlPath<String>,
 ) -> Result<Response, ErrorResponse> {
     let query = query.strip_suffix(".gif").unwrap_or(&query);
@@ -135,21 +141,33 @@ async fn render_animation(
         )
     })?;
 
-    let bpm = quantize_bpm_to_nearest_supported(unquantized_bpm);
-    tracing::debug!("serving {bpm} bpm (quantized from {unquantized_bpm} bpm)");
+    if state.waiting_clients.insert(addr.ip()) {
+        let bpm = quantize_bpm_to_nearest_supported(unquantized_bpm);
+        tracing::debug!(
+            "serving {bpm} bpm (quantized from {unquantized_bpm} bpm) to {}",
+            addr.ip()
+        );
 
-    let speed = bpm / state.source_bpm;
-    let file = state
-        .gif_service
-        .request_speed(speed)
-        .await
-        .map_err(|e| e.to_response())?;
+        let speed = bpm / state.source_bpm;
+        let file = state
+            .gif_service
+            .request_speed(speed)
+            .await
+            .map_err(|e| e.to_response())?;
 
-    let mut response = file.into_response();
-    response
-        .headers_mut()
-        .insert("Content-Type", "image/gif".try_into().unwrap());
-    Ok(response)
+        let mut response = file.into_response();
+        response
+            .headers_mut()
+            .insert("Content-Type", "image/gif".try_into().unwrap());
+        state.waiting_clients.remove(&addr.ip());
+        Ok(response)
+    } else {
+        tracing::debug!(
+            "{} (requesting {unquantized_bpm} bpm) is being rate limited",
+            addr.ip()
+        );
+        Err(error_response(StatusCode::TOO_MANY_REQUESTS, "Hey you, behave yourself! We only have one Hat Kid, don't spam requests at her like that. Please wait until your previous GIF arrives."))
+    }
 }
 
 #[tokio::main]
@@ -180,6 +198,7 @@ async fn main() {
         }),
         source_bpm: minimum_bpm,
         gif_service,
+        waiting_clients: DashSet::new(),
     });
 
     let app = Router::new()
@@ -192,7 +211,7 @@ async fn main() {
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     tracing::info!("listening on {addr}");
     axum::Server::bind(&addr)
-        .serve(app.into_make_service())
+        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
         .expect("failed to start server");
 }

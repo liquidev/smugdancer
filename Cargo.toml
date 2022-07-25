@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 axum = "0.5.13"
+dashmap = "5.3.4"
 handlebars = "4.3.3"
 nanorand = "0.7.0"
 parking_lot = "0.12.1"
