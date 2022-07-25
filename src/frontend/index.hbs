@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+   <title>Smug dance as a Service (SaaS)</title>
+
+   {{{css}}}
+</head>
+
+<body>
+   <h1>Smug dance as a Service</h1>
+
+   <div id="content">
+      <p>Enter a tempo and press the button to generate a GIF of Hat Kid dancing!</p>
+
+      <input id="bpm" name="bpm" type="number" min="40" max="18000" value="120" step="any">
+      <label for="bpm">BPM</label><br>
+      <button id="pretty-please">Pretty please</button>
+
+      <div id="please-wait" hidden="true">
+         <p>Please wait, Hat Kid is recording herself doing the dance…</p>
+         <progress id="progress"></progress>
+      </div>
+      <div id="results" hidden="true">
+         <div id="dance"></div>
+         <p>You can send this GIF to your friends using the link below:</p>
+         <a id="permalink">Link goes here</a>
+         <p>Have a cool day!</p>
+      </div>
+      <div id="error-results" hidden="true">
+         <p><strong>Error:</strong> <span id="error"></span></p>
+      </div>
+
+      <p>
+         <hr>
+         <a href="//{{root}}/man">Docs, details, and credits</a>
+      </p>
+   </div>
+
+   {{{js}}}
+</body>
+
+</html>

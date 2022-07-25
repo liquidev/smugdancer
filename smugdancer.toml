@@ -1,5 +1,5 @@
 port = 8080
-root = "liquidev.net/smugdancer"
+root = "localhost:8080"
 
 [gif_service]
 gifski = "/usr/bin/gifski"

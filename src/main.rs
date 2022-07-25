@@ -8,7 +8,7 @@ use axum::{
     http::StatusCode,
     response::{Html, IntoResponse, Response},
     routing::get,
-    Router,
+    Extension, Router,
 };
 use common::ErrorResponse;
 use gifservice::{GifServiceConfig, GifServiceHandle};
@@ -53,24 +53,60 @@ fn quantize_bpm_to_nearest_supported(bpm: f64) -> f64 {
 }
 
 #[derive(Serialize)]
-struct IndexData {
+struct TemplateDataConfig {
     root: String,
     minimum_bpm: f64,
 }
 
-fn render_index(index_data: IndexData) -> String {
-    const INDEX_HBS: &str = include_str!("index.hbs");
-    let mut hbs = Handlebars::new();
-    hbs.register_template_string("index_hbs", INDEX_HBS)
-        .expect("error in index.hbs template");
+#[derive(Serialize)]
+struct TemplateData {
+    #[serde(flatten)]
+    config: TemplateDataConfig,
+    css: String,
+    js: String,
+}
 
-    hbs.render("index_hbs", &index_data)
-        .expect("cannot render index template")
+#[derive(Clone)]
+struct Pages {
+    index: String,
+    man: String,
+}
+
+fn render_index(config: TemplateDataConfig) -> Pages {
+    const INDEX_HBS: &str = include_str!("frontend/index.hbs");
+    const MAN_HBS: &str = include_str!("frontend/man.hbs");
+    const CSS: &str = concat!("<style>", include_str!("frontend/style.css"), "</style>");
+    const JS: &str = concat!("<script>", include_str!("frontend/index.js"), "</script>");
+
+    let mut hbs = Handlebars::new();
+    hbs.register_template_string("index", INDEX_HBS)
+        .expect("error in index.hbs template");
+    hbs.register_template_string("man", MAN_HBS)
+        .expect("error in man.hbs template");
+    hbs.register_template_string("js", JS)
+        .expect("error in js template");
+
+    let template_data = TemplateData {
+        css: CSS.to_string(),
+        js: hbs
+            .render("js", &config)
+            .expect("cannot render js template"),
+        config,
+    };
+
+    Pages {
+        index: hbs
+            .render("index", &template_data)
+            .expect("cannot render index template"),
+        man: hbs
+            .render("man", &template_data)
+            .expect("cannot render index template"),
+    }
 }
 
 struct State {
     /// The index containing documentation.
-    index: String,
+    pages: Pages,
 
     /// The BPM of the source animation.
     source_bpm: f64,
@@ -79,12 +115,16 @@ struct State {
     gif_service: GifServiceHandle,
 }
 
-async fn index(state: Arc<State>) -> Html<String> {
-    Html(state.index.clone())
+async fn index(Extension(state): Extension<Arc<State>>) -> Html<String> {
+    Html(state.pages.index.clone())
+}
+
+async fn man(Extension(state): Extension<Arc<State>>) -> Html<String> {
+    Html(state.pages.man.clone())
 }
 
 async fn render_animation(
-    state: Arc<State>,
+    Extension(state): Extension<Arc<State>>,
     UrlPath(query): UrlPath<String>,
 ) -> Result<Response, ErrorResponse> {
     let query = query.strip_suffix(".gif").unwrap_or(&query);
@@ -134,7 +174,7 @@ async fn main() {
         GifService::spawn(config.gif_service, frame_count).expect("cannot spawn GIF service");
 
     let state = Arc::new(State {
-        index: render_index(IndexData {
+        pages: render_index(TemplateDataConfig {
             root: config.root,
             minimum_bpm,
         }),
@@ -143,20 +183,11 @@ async fn main() {
     });
 
     let app = Router::new()
-        .route(
-            "/",
-            get({
-                let state = Arc::clone(&state);
-                move || index(state)
-            }),
-        )
-        .route(
-            "/:query",
-            get({
-                let state = Arc::clone(&state);
-                move |query| render_animation(state, query)
-            }),
-        );
+        .route("/", get(index))
+        .route("/index.html", get(index))
+        .route("/man", get(man))
+        .route("/:query", get(render_animation))
+        .layer(Extension(state));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     tracing::info!("listening on {addr}");
