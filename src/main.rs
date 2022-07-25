@@ -168,7 +168,7 @@ async fn render_animation(
             ip
         );
 
-        tracing::debug!("X-Forwarded-For: {:?}", headers.get("X-Forwarded-For"));
+        tracing::debug!("headers: {:#?}", headers);
 
         let speed = bpm / state.source_bpm;
         let file = state
