@@ -168,6 +168,7 @@ async fn render_animation(
     };
 
     if state.waiting_clients.insert(ip) {
+        // WARNING: DO NOT USE THE `?` OPERATOR UNTIL THE CLIENT IS REMOVED FROM THE WAIT LIST!!!
         let bpm = quantize_bpm_to_nearest_supported(unquantized_bpm);
         tracing::debug!(
             "serving {bpm} bpm (quantized from {unquantized_bpm} bpm) to {}",
@@ -175,17 +176,19 @@ async fn render_animation(
         );
 
         let speed = bpm / state.source_bpm;
-        let file = state
+        let result = state
             .gif_service
             .request_speed(speed)
             .await
-            .map_err(|e| e.to_response())?;
+            .map_err(|e| e.to_response());
+        state.waiting_clients.remove(&ip);
+        // It is safe to use the `?` operator from here onward.
+        let file = result?;
 
         let mut response = file.into_response();
         response
             .headers_mut()
             .insert("Content-Type", "image/gif".try_into().unwrap());
-        state.waiting_clients.remove(&ip);
         Ok(response)
     } else {
         tracing::debug!(
