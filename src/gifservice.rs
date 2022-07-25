@@ -4,9 +4,11 @@ use std::{
     io,
     path::{Path, PathBuf},
     sync::Arc,
+    time::SystemTime,
 };
 
 use axum::{http::StatusCode, Json};
+use parking_lot::Mutex;
 use serde::Deserialize;
 use thiserror::Error;
 use tokio::{
@@ -27,6 +29,8 @@ pub struct GifServiceConfig {
     pub cache_limit: u64,
     /// When to stop removing old GIFs.
     pub cache_purge_limit: u64,
+    /// How many GIFs to remove at a time.
+    pub cache_purge_max_count: usize,
 }
 
 impl GifServiceConfig {
@@ -34,6 +38,25 @@ impl GifServiceConfig {
         std::fs::create_dir_all(&self.work_dir())?;
         std::fs::create_dir_all(&self.gif_dir())?;
         Ok(())
+    }
+
+    pub fn open_cache_database(&self) -> Result<rusqlite::Connection, Error> {
+        tracing::debug!("opening connection to cache database");
+        let database = rusqlite::Connection::open(self.database())?;
+        database.execute(
+            r#"
+                CREATE TABLE IF NOT EXISTS usage_time (
+                    file    TEXT NOT NULL UNIQUE,
+                    time    INTEGER NOT NULL
+                )
+            "#,
+            (),
+        )?;
+        Ok(database)
+    }
+
+    pub fn database(&self) -> PathBuf {
+        self.cache_dir.join("cache.db")
     }
 
     pub fn work_dir(&self) -> PathBuf {
@@ -48,18 +71,30 @@ impl GifServiceConfig {
 pub struct GifService {
     config: Arc<GifServiceConfig>,
     render_requests: mpsc::Sender<RenderRequest>,
+    database: Arc<Mutex<rusqlite::Connection>>,
+}
+
+struct RenderParams<'s> {
+    frame_count: usize,
+    config: &'s GifServiceConfig,
 }
 
 impl GifService {
     const FRAMES_PATH: &'static str = "data/frames";
 
-    pub fn spawn(config: GifServiceConfig, frame_count: usize) -> GifServiceHandle {
+    pub fn spawn(config: GifServiceConfig, frame_count: usize) -> Result<GifServiceHandle, Error> {
         let (gif_tx, mut gif_rx) = mpsc::channel(32);
         let (render_tx, mut render_rx) = mpsc::channel(32);
+
+        let database = config
+            .open_cache_database()
+            .expect("cannot open cache database");
+        let database = Arc::new(Mutex::new(database));
 
         let service = Arc::new(GifService {
             config: Arc::new(config),
             render_requests: render_tx,
+            database,
         });
         // NOTE: Render requests are handled in a queue, unlike GIF requests which are handled
         // concurrently.
@@ -68,7 +103,14 @@ impl GifService {
             async move {
                 tracing::info!("render task is ready");
                 while let Some(request) = render_rx.recv().await {
-                    Self::handle_render_request(request, frame_count, &config).await;
+                    Self::handle_render_request(
+                        request,
+                        RenderParams {
+                            frame_count,
+                            config: &config,
+                        },
+                    )
+                    .await;
                 }
             }
         });
@@ -80,7 +122,7 @@ impl GifService {
             }
         });
 
-        GifServiceHandle { requests: gif_tx }
+        Ok(GifServiceHandle { requests: gif_tx })
     }
 
     async fn handle_gif_request(&self, request: GifRequest) {
@@ -99,7 +141,7 @@ impl GifService {
 
         if !cached_filename.exists() {
             // GC errors are non-fatal.
-            if let Err(error) = Self::collect_garbage(&self.config).await {
+            if let Err(error) = self.collect_garbage().await {
                 tracing::error!("{error}")
             }
 
@@ -118,18 +160,42 @@ impl GifService {
                 .map_err(Error::CannotRenameGif)?;
         }
 
+        // NOTE: Result is ignored because the task shouldn't panic.
+        // If it does, the panic will be logged.
+        let _ = tokio::task::spawn_blocking({
+            let database = Arc::clone(&self.database);
+
+            let file = cached_filename.clone();
+            let file = file.to_str().ok_or(Error::InvalidUtf8)?.to_owned();
+            let time = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_err(|_| Error::ClockWentBackwards)?
+                .as_secs();
+
+            move || {
+                let database = database.lock();
+                let mut stmt = database
+                    .prepare_cached(
+                        r#"
+                            INSERT OR REPLACE
+                            INTO usage_time (file, time)
+                            VALUES (?1, ?2)
+                        "#,
+                    )
+                    .expect("cannot prepare SQL statement");
+                stmt.execute((file, time))
+            }
+        })
+        .await;
+
         let file = tokio::fs::read(&cached_filename)
             .await
             .map_err(Error::CannotReadGif)?;
         Ok(file)
     }
 
-    async fn handle_render_request(
-        request: RenderRequest,
-        frame_count: usize,
-        config: &GifServiceConfig,
-    ) {
-        let result = Self::render_speed(request.speed, frame_count, config).await;
+    async fn handle_render_request(request: RenderRequest, params: RenderParams<'_>) {
+        let result = Self::render_speed(request.speed, params.frame_count, params.config).await;
         let _ = request.responder.send(result);
     }
 
@@ -180,9 +246,9 @@ impl GifService {
         Ok(output_filename)
     }
 
-    async fn collect_garbage(config: &GifServiceConfig) -> Result<(), Error> {
+    async fn collect_garbage(&self) -> Result<(), Error> {
         let mut entries = vec![];
-        let mut read_dir = tokio::fs::read_dir(&config.gif_dir())
+        let mut read_dir = tokio::fs::read_dir(&self.config.gif_dir())
             .await
             .map_err(Error::CollectGarbage)?;
         while let Some(entry) = read_dir.next_entry().await.map_err(Error::CollectGarbage)? {
@@ -191,33 +257,75 @@ impl GifService {
         }
 
         let mut total_size: u64 = entries.iter().map(|(_, metadata)| metadata.len()).sum();
-        if total_size >= config.cache_limit {
+        if total_size >= self.config.cache_limit {
             tracing::info!(
                 "purging cache (exceeded limit of {} bytes - now at {total_size})",
-                config.cache_limit
+                self.config.cache_limit
             );
 
-            entries.sort_by(|(_, a), (_, b)| {
-                a.created()
-                    .expect("you're kidding, right?")
-                    .cmp(&b.created().expect("we've been tricked"))
-            });
+            let database = Arc::clone(&self.database);
+            let max_count = self.config.cache_purge_max_count;
+            let oldest_files: Vec<String> = tokio::task::spawn_blocking(move || {
+                let database = database.lock();
+                let mut stmt = database
+                    .prepare_cached(
+                        r#"
+                            SELECT file FROM usage_time
+                            ORDER BY time ASC
+                            LIMIT ?1
+                        "#,
+                    )
+                    .expect("cannot prepare query");
+                stmt.query_map((max_count,), |row| row.get(0))
+                    .expect("cannot query rows")
+                    .filter_map(|r| r.ok())
+                    .collect()
+            })
+            .await
+            .map_err(|e| Error::DbQuery(e.to_string()))?;
 
             let mut to_remove = vec![];
-            for (entry, metadata) in &entries {
-                to_remove.push(entry);
-                total_size -= metadata.len();
-                if total_size <= config.cache_purge_limit {
-                    break;
+            for filename in oldest_files {
+                let path = Path::new(&filename);
+                if let Ok(metadata) = path.metadata() {
+                    to_remove.push(filename);
+                    total_size -= metadata.len();
+                    if total_size <= self.config.cache_purge_limit {
+                        break;
+                    }
                 }
             }
-            for entry in to_remove {
-                let path = entry.path();
-                tokio::fs::remove_file(&path)
+            let mut removed = vec![];
+            for filename in to_remove {
+                match tokio::fs::remove_file(&filename)
                     .await
-                    .map_err(Error::CollectGarbage)?;
-                tracing::debug!("cache purge: removed {path:?}");
+                    .map_err(Error::CollectGarbage)
+                {
+                    Ok(_) => {
+                        tracing::debug!("cache purge: removed {filename:?}");
+                        removed.push(filename);
+                    }
+                    Err(error) => {
+                        tracing::debug!("cache purge: cannot remove {filename:?}: {error}")
+                    }
+                }
             }
+            let database = Arc::clone(&self.database);
+            tokio::task::spawn_blocking(move || {
+                let database = database.lock();
+                let mut stmt = database
+                    .prepare_cached(
+                        r#"
+                            DELETE FROM usage_time
+                            WHERE file = ?1
+                        "#,
+                    )
+                    .expect("cannot prepare deletion query");
+                for filename in removed {
+                    // NOTE: Should always succeed so we ignore the result.
+                    let _ = stmt.execute((filename,));
+                }
+            });
         }
 
         Ok(())
@@ -263,8 +371,12 @@ pub enum Error {
     #[error("yawn…")]
     SpeedTooSlow,
 
-    #[error("Error while handling GIF encoding process: {0}")]
+    #[error("GIF encoding process: {0}")]
     Encoder(io::Error),
+    #[error("Cache database: {0}")]
+    CacheDb(#[from] rusqlite::Error),
+    #[error("Database query: {0}")]
+    DbQuery(String),
     #[error("Cannot read rendered GIF: {0}")]
     CannotReadGif(io::Error),
     #[error("Cannot rename rendered GIF: {0}")]
@@ -273,8 +385,12 @@ pub enum Error {
     GifServiceOffline,
     #[error("Internal encoding job failure (did not receive rendered GIF)")]
     EncodingJobExited,
+    #[error("Invalid UTF-8")]
+    InvalidUtf8,
+    #[error("System clock went backwards")]
+    ClockWentBackwards,
 
-    #[error("Cache garbage collection I/O error: {0}")]
+    #[error("Cache garbage collection I/O: {0}")]
     CollectGarbage(io::Error),
 }
 
@@ -283,10 +399,14 @@ impl Error {
         match self {
             Self::SpeedTooFast | Self::SpeedTooSlow => StatusCode::BAD_REQUEST,
             Self::Encoder(_)
+            | Self::CacheDb(_)
+            | Self::DbQuery(_)
             | Self::CannotReadGif(_)
             | Self::CannotRenameGif(_)
             | Self::GifServiceOffline
             | Self::EncodingJobExited
+            | Self::InvalidUtf8
+            | Self::ClockWentBackwards
             | Self::CollectGarbage(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

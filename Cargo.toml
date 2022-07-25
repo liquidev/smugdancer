@@ -7,6 +7,8 @@ edition = "2021"
 axum = "0.5.13"
 handlebars = "4.3.3"
 nanorand = "0.7.0"
+parking_lot = "0.12.1"
+rusqlite = { version = "0.28.0", features = ["bundled"] }
 serde = { version = "1.0.140", features = ["derive"] }
 thiserror = "1.0.31"
 tokio = { version = "1.20.0", features = ["full"] }

@@ -130,7 +130,8 @@ async fn main() {
     tracing::debug!("found {frame_count} animation frames");
     tracing::debug!("given {WAVE_COUNT} waves at {ANIMATION_FPS} fps, the minimum bpm for playback at full framerate is {minimum_bpm}");
 
-    let gif_service = GifService::spawn(config.gif_service, frame_count);
+    let gif_service =
+        GifService::spawn(config.gif_service, frame_count).expect("cannot spawn GIF service");
 
     let state = Arc::new(State {
         index: render_index(IndexData {
