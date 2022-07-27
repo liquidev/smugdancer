@@ -22,7 +22,7 @@ limit = 16777216
 purge_limit = 8388608
 
 # Production:
-# cache_limit = 268435456
-# cache_purge_limit = 234881024
+# limit = 268435456
+# purge_limit = 234881024
 
 purge_max_count = 8
