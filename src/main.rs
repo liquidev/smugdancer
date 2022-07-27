@@ -1,7 +1,8 @@
 #![allow(clippy::or_fun_call)]
 
+mod cacheservice;
 mod common;
-mod gifservice;
+mod renderservice;
 
 use std::{
     net::{IpAddr, SocketAddr},
@@ -16,13 +17,14 @@ use axum::{
     routing::get,
     Extension, Router,
 };
+use cacheservice::{CacheServiceConfig, CacheServiceHandle};
 use common::ErrorResponse;
 use dashmap::DashSet;
-use gifservice::{GifServiceConfig, GifServiceHandle};
 use handlebars::Handlebars;
+use renderservice::{RenderService, RenderServiceConfig};
 use serde::{Deserialize, Serialize};
 
-use crate::{common::error_response, gifservice::GifService};
+use crate::{cacheservice::GifService, common::error_response};
 
 const CONFIG_PATH: &str = "smugdancer.toml";
 const FRAMES_PATH: &str = "data/frames";
@@ -34,17 +36,31 @@ const WAVE_COUNT: f64 = 12.0;
 
 #[derive(Deserialize)]
 struct Config {
+    server: ServerConfig,
+    render_service: RenderServiceConfig,
+    cache_service: CacheServiceConfig,
+}
+
+#[derive(Deserialize)]
+struct ServerConfig {
     /// The port under which smugdancer should serve.
     port: u16,
     /// The root URL that's shown on the documentation website.
     root: String,
+    /// Set to `false` to disable rate limiting. This is available for testing in development
+    /// environments, where getting multiple IP addresses to circumvent rate limits is not
+    /// practical. On production servers this should be **always** enabled.
+    #[serde(default = "enabled")]
+    rate_limiting: bool,
     /// Set to `true` if the server is behind a reverse proxy like nginx.
     /// This makes it use the X-Forwarded-For header for rate limiting instead of the connection's
     /// IP address.
     #[serde(default)]
     reverse_proxy: bool,
+}
 
-    gif_service: GifServiceConfig,
+fn enabled() -> bool {
+    true
 }
 
 fn count_frames() -> usize {
@@ -118,13 +134,13 @@ fn render_index(config: TemplateDataConfig) -> Pages {
 
 struct State {
     /// The config file.
-    config: Config,
+    config: ServerConfig,
     /// The index containing documentation.
     pages: Pages,
     /// The BPM of the source animation.
     source_bpm: f64,
     /// The GIF service.
-    gif_service: GifServiceHandle,
+    gif_service: CacheServiceHandle,
     /// A map of IP addresses that are currently waiting in the render queue. These IPs will be
     /// rate limited so as not to kill the server with requests.
     waiting_clients: DashSet<IpAddr>,
@@ -167,7 +183,7 @@ async fn render_animation(
         addr.ip()
     };
 
-    if state.waiting_clients.insert(ip) {
+    if state.config.rate_limiting && state.waiting_clients.insert(ip) {
         // WARNING: DO NOT USE THE `?` OPERATOR UNTIL THE CLIENT IS REMOVED FROM THE WAIT LIST!!!
         let bpm = quantize_bpm_to_nearest_supported(unquantized_bpm);
         tracing::debug!(
@@ -207,26 +223,22 @@ async fn main() {
     let config = std::fs::read_to_string(CONFIG_PATH).expect("failed to load config file");
     let config: Config = toml::from_str(&config).expect("config TOML deserialization error");
 
-    config
-        .gif_service
-        .create_cache_dirs()
-        .expect("cannot create cache directories for GIF service");
-
     let frame_count = count_frames();
     let minimum_bpm = get_minimum_bpm(frame_count as f64);
     tracing::debug!("found {frame_count} animation frames");
     tracing::debug!("given {WAVE_COUNT} waves at {ANIMATION_FPS} fps, the minimum bpm for playback at full framerate is {minimum_bpm}");
 
-    let gif_service = GifService::spawn(config.gif_service.clone(), frame_count)
-        .expect("cannot spawn GIF service");
+    let render_service = RenderService::spawn(config.render_service, frame_count);
+    let gif_service =
+        GifService::spawn(config.cache_service, render_service).expect("cannot spawn GIF service");
 
-    let port = config.port;
+    let port = config.server.port;
     let state = Arc::new(State {
         pages: render_index(TemplateDataConfig {
-            root: config.root.clone(),
+            root: config.server.root.clone(),
             minimum_bpm,
         }),
-        config,
+        config: config.server,
         source_bpm: minimum_bpm,
         gif_service,
         waiting_clients: DashSet::new(),
