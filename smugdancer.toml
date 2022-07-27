@@ -2,6 +2,7 @@
 port = 8080
 root = "localhost:8080"
 reverse_proxy = false
+rate_limiting = false  # REMOVE IN PROD
 
 [render_service]
 encoder = "/usr/bin/gifski"
@@ -10,6 +11,7 @@ encoder_flags = [
     "--output", "-",
     "{input_filenames}"
 ]
+max_jobs = 2
 
 [cache_service]
 cache_dir = "cache/gif"

@@ -9,18 +9,20 @@ use dashmap::DashMap;
 use serde::Deserialize;
 use tokio::{
     process::Command,
-    sync::{mpsc, oneshot},
+    sync::{mpsc, oneshot, Semaphore},
 };
 
 use crate::common::Error;
 
 #[derive(Deserialize, Clone)]
 pub struct RenderServiceConfig {
-    /// The path to the gifski executable.
+    /// The path to the encoder executable.
     pub encoder: PathBuf,
     /// Flags to pass onto the encoder. Among these flags must be one whose contents are
     /// `{input_filenames}`, which is expanded to a list of filenames for the encoder.
     pub encoder_flags: Vec<String>,
+    /// The maximum number of encoding jobs that are allowed to run at a time.
+    pub max_jobs: usize,
 }
 
 pub struct RenderService {
@@ -28,6 +30,7 @@ pub struct RenderService {
     frame_count: usize,
     queues: DashMap<u64, Vec<oneshot::Sender<RenderResult>>>,
     render_requests: mpsc::Sender<f64>,
+    render_jobs: Semaphore,
 }
 
 impl RenderService {
@@ -39,10 +42,11 @@ impl RenderService {
         let (completed_renders_tx, mut completed_renders_rx) = mpsc::channel(8);
 
         let service = Arc::new(RenderService {
-            config,
             frame_count,
             queues: DashMap::new(),
             render_requests: renders_tx,
+            render_jobs: Semaphore::new(config.max_jobs),
+            config,
         });
         tokio::spawn({
             let service = Arc::clone(&service);
@@ -64,10 +68,14 @@ impl RenderService {
             // NOTE: Render requests are not handled in separate threads (yet.)
             while let Some(speed) = renders_rx.recv().await {
                 tracing::trace!("got render request for {speed}x");
-                // Should be fine if we discard the error.
-                let _ = completed_renders_tx
-                    .send((speed, service.render_speed(speed).await))
-                    .await;
+                let completed_renders_tx = completed_renders_tx.clone();
+                let service = Arc::clone(&service);
+                tokio::spawn(async move {
+                    // Should be fine if we discard the error.
+                    let _ = completed_renders_tx
+                        .send((speed, service.render_speed(speed).await))
+                        .await;
+                });
             }
         });
 
@@ -107,6 +115,10 @@ impl RenderService {
     }
 
     async fn render_speed(&self, speed: f64) -> Result<Vec<u8>, Error> {
+        // The permit must be given here because we never close the semaphore, thus it is
+        // safe to unwrap.
+        let _permit = self.render_jobs.acquire().await.unwrap();
+
         tracing::debug!("starting render for {speed}x speed");
 
         let output_frames = (self.frame_count as f64 / speed).floor() as usize;

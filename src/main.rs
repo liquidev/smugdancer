@@ -183,7 +183,7 @@ async fn render_animation(
         addr.ip()
     };
 
-    if state.config.rate_limiting && state.waiting_clients.insert(ip) {
+    if !state.config.rate_limiting || state.waiting_clients.insert(ip) {
         // WARNING: DO NOT USE THE `?` OPERATOR UNTIL THE CLIENT IS REMOVED FROM THE WAIT LIST!!!
         let bpm = quantize_bpm_to_nearest_supported(unquantized_bpm);
         tracing::debug!(
