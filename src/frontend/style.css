@@ -1,43 +1,43 @@
 html {
-   font-family: 'Segoe UI', system-ui, sans-serif;
+    font-family: 'Segoe UI', system-ui, sans-serif;
 }
 
 body {
-   margin: 0 auto;
-   padding-bottom: 13em;
-   max-width: 720px;
-   text-align: justify;
-   color: #222222;
+    margin: 0 auto;
+    padding-bottom: 13em;
+    max-width: 720px;
+    text-align: justify;
+    color: #222222;
 }
 
 h1 {
-   text-align: center;
+    text-align: center;
 }
 
 blockquote {
-   width: auto;
-   border-left: 4px solid #eeeeee;
-   padding-left: 24px;
+    width: auto;
+    border-left: 4px solid #eeeeee;
+    padding-left: 24px;
 }
 
 #results,
 #content {
-   text-align: center;
+    text-align: center;
 }
 
 #permalink {
-   font-size: 16px;
+    font-size: 16px;
 }
 
 #error-results {
-   color: #550000;
+    color: #550000;
 }
 
 hr {
-   margin-top: 3em;
-   border: 1px solid #eeeeee;
+    margin-top: 3em;
+    border: 1px solid #eeeeee;
 }
 
 #dance {
-   margin-top: 1em;
+    margin-top: 1em;
 }

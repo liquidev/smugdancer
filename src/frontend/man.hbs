@@ -3,107 +3,121 @@
 <html lang="en">
 
 <head>
-   <title>smugdancer(1)</title>
+    <title>smugdancer(1)</title>
 
-   {{{css}}}
+    {{{css}}}
 </head>
 
 <body>
-   <h1>smugdancer(1)</h1>
+    <h1>smugdancer(1)</h1>
 
-   <h2>NAME</h2>
-   <p>smugdancer - generate a smug dancin' GIF synchronized to a specific tempo (in BPM.)</p>
+    <h2>NAME</h2>
+    <p>smugdancer - generate a smug dancin' GIF synchronized to a specific tempo (in BPM.)</p>
 
-   <h2>SYNOPSIS</h2>
-   <p>
-   <pre>GET {{root}}/:bpm.gif</pre>
-   <pre>GET {{root}}/:bpm</pre>
-   where <code>:bpm</code> is a floating point number.
-   </p>
+    <h2>SYNOPSIS</h2>
+    <p>
+    <pre>GET {{root}}/:bpm.gif</pre>
+    <pre>GET {{root}}/:bpm</pre>
+    where <code>:bpm</code> is a floating point number.
+    </p>
 
-   <h2>DESCRIPTION</h2>
-   <p>
-      Upon valid use, the <code>GET /:bpm.gif</code> and <code>GET /:bpm</code> endpoints will return a GIF of the smug
-      dance, synchronized to the provided tempo. Generating the GIF might take a while, so be patient.
-   </p>
-   <p>
-      The <code>.gif</code> suffix version is provided for apps like Discord, which will not play the GIF unless the URL
-      contains the <code>.gif</code> extension.
-   </p>
-   <p>
-      The minimum supported tempo is {{minimum_bpm}} BPM. Lower values will work, but the resulting GIF might (will,
-      even!) stutter.
-      Besides, what kind of person would want to dance to music that's slower than 60 BPM?
-   </p>
-   <p>
-      If an error occurs, a JSON response in the form of an object <code>{"error":"message"}</code> will be returned.
-      The HTTP status code will be 400 Bad Request if it's user error, or 500 Internal Server Error if something goes
-      wrong internally (if it does, please let me know.) <strong>Do note that these error messages are provided for
-         display in user interfaces only and their values should not be relied upon.</strong>
-   </p>
+    <h2>DESCRIPTION</h2>
+    <p>
+        Upon valid use, the <code>GET /:bpm.gif</code> and <code>GET /:bpm</code> endpoints will return a GIF of the
+        smug
+        dance, synchronized to the provided tempo. Generating the GIF might take a while, so be patient.
+    </p>
+    <p>
+        The <code>.gif</code> suffix version is provided for apps like Discord, which will not play the GIF unless the
+        URL
+        contains the <code>.gif</code> extension.
+    </p>
+    <p>
+        The minimum supported tempo is {{minimum_bpm}} BPM. Lower values will work, but the resulting GIF might (will,
+        even!) stutter.
+        Besides, what kind of person would want to dance to music that's slower than 60 BPM?
+    </p>
+    <p>
+        If an error occurs, a JSON response in the form of an object <code>{"error":"message"}</code> will be returned.
+        The HTTP status code will be 400 Bad Request if it's user error, or 500 Internal Server Error if something goes
+        wrong internally (if it does, please let me know.) <strong>Do note that these error messages are provided for
+            display in user interfaces only and their values should not be relied upon.</strong>
+    </p>
 
-   <h2>EXAMPLES</h2>
-   <p>
-      To obtain a GIF of Hat Kid dancing at <em>roughly</em> 128 BPM (the tempo of <a
-         href="https://www.youtube.com/watch?v=SHvhps47Lmc">Peace and Tranquility</a>):
-   <pre>https://{{root}}/128</pre>
-   </p>
+    <h2>EXAMPLES</h2>
+    <p>
+        To obtain a GIF of Hat Kid dancing at <em>roughly</em> 128 BPM (the tempo of <a
+            href="https://www.youtube.com/watch?v=SHvhps47Lmc">Peace and Tranquility</a>):
+    <pre>https://{{root}}/128</pre>
+    </p>
 
-   <h2>LIMITATIONS</h2>
-   <ul>
-      <li>
-         <p>
-            Due to limitations imposed by the GIF file format, as well as historical baggage of modern day web browsers,
-            animations can only be played out at a framerate of up to 50 fps. Because all frames take 20 milliseconds,
-            it is impossible to perfectly synchronize with certain tempo values. For instance, 128 BPM requires that the
-            animation takes 281.25 frames, which is impossible. Thus, the actual tempo the GIF is synchronized to is
-            slightly
-            faster (~128.1138790 BPM).
-         </p>
-         <p>
-            This <em>could</em> be somewhat alleviated by repeating the animation a specific number of times to round
-            the
-            frame count up to a whole number, but again, due to limitations of the GIF file format, the file size would
-            increase drastically. In case of 128 BPM, the animation would need to be repeated four times to round the
-            frame
-            count up to the nearest integer, which would quadruple the file size.
-         </p>
-      </li>
-      <li>
-         <p>
-            600 frames is not enough to provide a neat'n'smooth animation across all framerates, so you may see slight
-            stuttering sometimes. I might add more frames to the source render someday, but I <em>really</em> don't feel
-            like doing it right now. Rendering with Cycles on the CPU is really slow.
-         </p>
-      </li>
-      <li>
-         <p>
-            There's no way to swap out hats, give Hat Kid double sunglasses, or anything of that sort, unfortunately.
-            The source render weighs in at about 400 MiB and I really do not have the bandwidth to upload much more in a
-            reasonable amount of time. Also, see previous bullet point.
-         </p>
-      </li>
-   </ul>
+    <h2>LIMITATIONS</h2>
+    <ul>
+        <li>
+            <p>
+                Due to limitations imposed by the GIF file format, as well as historical baggage of modern day web
+                browsers,
+                animations can only be played out at a framerate of up to 50 fps. Because all frames take 20
+                milliseconds,
+                it is impossible to perfectly synchronize with certain tempo values. For instance, 128 BPM requires that
+                the
+                animation takes 281.25 frames, which is impossible. Thus, the actual tempo the GIF is synchronized to is
+                slightly
+                faster (~128.1138790 BPM).
+            </p>
+            <p>
+                This <em>could</em> be somewhat alleviated by repeating the animation a specific number of times to
+                round
+                the
+                frame count up to a whole number, but again, due to limitations of the GIF file format, the file size
+                would
+                increase drastically. In case of 128 BPM, the animation would need to be repeated four times to round
+                the
+                frame
+                count up to the nearest integer, which would quadruple the file size.
+            </p>
+        </li>
+        <li>
+            <p>
+                600 frames is not enough to provide a neat'n'smooth animation across all framerates, so you may see
+                slight
+                stuttering sometimes. I might add more frames to the source render someday, but I <em>really</em> don't
+                feel
+                like doing it right now. Rendering with Cycles on the CPU is really slow.
+            </p>
+        </li>
+        <li>
+            <p>
+                There's no way to swap out hats, give Hat Kid double sunglasses, or anything of that sort,
+                unfortunately.
+                The source render weighs in at about 400 MiB and I really do not have the bandwidth to upload much more
+                in a
+                reasonable amount of time. Also, see previous bullet point.
+            </p>
+        </li>
+    </ul>
 
-   <h2>CREDITS</h2>
-   <p>
-      Website, web server, and render of Hat Kid is &copy; liquidev, 2022. Note that I do not own the character design,
-      model, nor animation.
-   </p>
-   <p>
-      A Hat in Time is &copy; Gears for Breakfast. This website is a fan project and is not affiliated with GfB.
-      <sub>Please don't sue me :(</sub>
-   </p>
-   <p>
-      If anyone from GfB sees this and wants me to take this website down, please contact me at the email address that's
-      listed on my GitHub profile.
-   </p>
+    <h2>CREDITS</h2>
+    <p>
+        Website, web server, and render of Hat Kid is &copy; liquidev, 2022. Note that I do not own the character
+        design,
+        model, nor animation.
+    </p>
+    <p>
+        A Hat in Time is &copy; Gears for Breakfast. This website is a fan project and is not affiliated with GfB.
+        <sub>Please don't sue me :(</sub>
+    </p>
+    <p>
+        If anyone from GfB sees this and wants me to take this website down, please contact me at the email address
+        that's
+        listed on my GitHub profile.
+    </p>
 
-   <h2>SOURCE?</h2>
-   <p>
-      I may publish the source code to this web server someday, but what's the web server useful for without the smug
-      dance? I can't just stuff over 400 MiB of PNGs into a Git repository!
-   </p>
+    <h2>SOURCE?</h2>
+    <p>
+        I may publish the source code to this web server someday, but what's the web server useful for without the smug
+        dance? I can't just stuff over 400 MiB of PNGs into a Git repository!
+    </p>
 </body>
 
 </html>
