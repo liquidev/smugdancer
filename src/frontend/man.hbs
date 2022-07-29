@@ -29,13 +29,11 @@
     <h2>DESCRIPTION</h2>
     <p>
         Upon valid use, the <code>GET /:bpm.gif</code> and <code>GET /:bpm</code> endpoints will return a GIF of the
-        smug
-        dance, synchronized to the provided tempo. Generating the GIF might take a while, so be patient.
+        smug dance, synchronized to the provided tempo. Generating the GIF might take a while, so be patient.
     </p>
     <p>
         The <code>.gif</code> suffix version is provided for apps like Discord, which will not play the GIF unless the
-        URL
-        contains the <code>.gif</code> extension.
+        URL contains the <code>.gif</code> extension.
     </p>
     <p>
         The minimum supported tempo is {{minimum_bpm}} BPM. Lower values will work, but the resulting GIF might (will,
@@ -47,6 +45,21 @@
         The HTTP status code will be 400 Bad Request if it's user error, or 500 Internal Server Error if something goes
         wrong internally (if it does, please let me know.) <strong>Do note that these error messages are provided for
             display in user interfaces only and their values should not be relied upon.</strong>
+    </p>
+
+    <h2>RATE LIMITING</h2>
+    <p>
+        To prevent abuse, the server will reject your requests if you execute them too often. The exact condition is
+        that a single IP may not issue a new requests before it receives a response from the server. This boils down to
+        two cases:
+    </p>
+    <ul>
+        <li>The server needs to render your BPM because it hasn't been used before (slow),</li>
+        <li>The server sends you a cached GIF of your requested BPM (fast).</li>
+    </ul>
+    <p>
+        The exact rendering speed may vary depending on conditions such as congestion. If many IPs are requesting
+        BPMs that haven't been cached yet, it may take a while for the server to process them all, so be patient.
     </p>
 
     <h2>EXAMPLES</h2>
