@@ -30,9 +30,9 @@ pub fn compare_colors(a: [u8; 3], b: [u8; 3]) -> f32 {
     );
 
     let coeffs = f32x4::new([0.299, 0.587, 0.114, 0.0]);
-    let luma1 = (a * coeffs).reduce_add() / 255.0;
-    let luma2 = (b * coeffs).reduce_add() / 255.0;
-    let luma_diff = luma2 - luma1;
+    let luma1 = (a * coeffs).reduce_add();
+    let luma2 = (b * coeffs).reduce_add();
+    let luma_diff = (luma2 - luma1) / 255.0;
     let diffs = (a - b) / 255.0;
 
     (diffs * diffs * coeffs).reduce_add() * 0.75 + luma_diff * luma_diff
@@ -40,7 +40,12 @@ pub fn compare_colors(a: [u8; 3], b: [u8; 3]) -> f32 {
 
 type MixingPlan = [usize; MATRIX_LEN];
 
-fn devise_best_mixing_plan(color: [u8; 3], palette: &[[u8; 3]], threshold: f32) -> MixingPlan {
+fn devise_best_mixing_plan(
+    color: [u8; 3],
+    palette: &[[u8; 3]],
+    palette_luma: &[f32],
+    threshold: f32,
+) -> MixingPlan {
     let src = color.map(|x| x as u32);
     let mut result = [0; MATRIX_LEN];
 
@@ -70,18 +75,19 @@ fn devise_best_mixing_plan(color: [u8; 3], palette: &[[u8; 3]], threshold: f32) 
         e[2] += src[2] as i32 - pc[2];
     }
 
-    result.sort_by(|&a, &b| luma(palette[a]).total_cmp(&luma(palette[b])));
+    result.sort_by(|&a, &b| palette_luma[a].total_cmp(&palette_luma[b]));
 
     result
 }
 
 pub fn dither(image: &RgbImage, palette: &[[u8; 3]], threshold: f32) -> Vec<u8> {
     let mut result = vec![0; image.width() as usize * image.height() as usize];
+    let palette_luma: Vec<_> = palette.iter().map(|&x| luma(x)).collect();
 
     for (x, y, &Rgb(pixel)) in image.enumerate_pixels() {
         let (x, y) = (x as usize, y as usize);
         let matrix_value = MATRIX[(x & 7) + ((y & 7) << 3)];
-        let plan = devise_best_mixing_plan(pixel, palette, threshold);
+        let plan = devise_best_mixing_plan(pixel, palette, &palette_luma, threshold);
         // println!("{x} {y} {matrix_value} {plan:?}");
         let index = plan[matrix_value as usize];
         result[x + y * image.width() as usize] = index as u8;
