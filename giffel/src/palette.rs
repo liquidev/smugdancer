@@ -1,5 +1,6 @@
-use image::{Rgb, RgbImage};
 use nanorand::{Rng, WyRand};
+
+use crate::{colorspace::Oklab, image::Image};
 
 #[derive(Debug)]
 struct Mean {
@@ -26,17 +27,12 @@ fn find_closest_mean(observation: [f32; 3], means: &[Mean]) -> usize {
     min_index
 }
 
-pub fn extract_palette(image: &RgbImage, colors: usize, iterations: usize) -> Vec<[u8; 3]> {
+pub fn extract_palette(image: &Image<Oklab>, colors: usize, iterations: usize) -> Vec<Oklab> {
     let observations = {
         let mut observations: Vec<_> = image
-            .pixels()
-            .map(|Rgb(color)| {
-                [
-                    color[0] as f32 / 255.0,
-                    color[1] as f32 / 255.0,
-                    color[2] as f32 / 255.0,
-                ]
-            })
+            .pixels
+            .iter()
+            .map(|color| [color.l, color.a, color.b])
             .collect();
         observations.sort_by(|a, b| a.partial_cmp(b).unwrap());
         observations.dedup();
@@ -76,6 +72,11 @@ pub fn extract_palette(image: &RgbImage, colors: usize, iterations: usize) -> Ve
 
     means
         .iter()
-        .map(|mean| mean.position.map(|x| (x * 255.0) as u8))
+        .map(
+            |&Mean {
+                 position: [l, a, b],
+                 ..
+             }| Oklab { l, a, b },
+        )
         .collect()
 }

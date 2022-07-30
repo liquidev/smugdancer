@@ -1,6 +1,4 @@
-use image::{Rgb, RgbImage};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use wide::f32x4;
+use crate::{colorspace::Oklab, image::Image};
 
 // https://bisqwit.iki.fi/story/howto/dither/jy/
 // This uses the Knoll dithering algorithm whose patent expired in 2019.
@@ -19,48 +17,43 @@ const MATRIX: [u8; MATRIX_LEN] = [
     42, 26, 38, 22, 41, 25, 37, 21,
 ];
 
-fn luma(color: [u8; 3]) -> f32 {
-    let color = color.map(|x| x as f32);
-    (color[0] * 0.299 + color[1] * 0.587 + color[2] * 0.114) / 255.0
-}
+pub fn compare_colors(a: Oklab, b: Oklab) -> f32 {
+    // let (a, b) = (
+    //     f32x4::new([a[0] as f32, a[1] as f32, a[2] as f32, 0.0]),
+    //     f32x4::new([b[0] as f32, b[1] as f32, b[2] as f32, 0.0]),
+    // );
 
-pub fn compare_colors(a: [u8; 3], b: [u8; 3]) -> f32 {
-    let (a, b) = (
-        f32x4::new([a[0] as f32, a[1] as f32, a[2] as f32, 0.0]),
-        f32x4::new([b[0] as f32, b[1] as f32, b[2] as f32, 0.0]),
-    );
+    // const DIV_255: f32 = 1.0 / 255.0;
 
-    const DIV_255: f32 = 1.0 / 255.0;
+    // let coeffs = f32x4::new([0.299, 0.587, 0.114, 0.0]);
+    // let luma1 = (a * coeffs).reduce_add();
+    // let luma2 = (b * coeffs).reduce_add();
+    // let luma_diff = (luma2 - luma1) * DIV_255;
+    // let diffs = (a - b) * DIV_255;
 
-    let coeffs = f32x4::new([0.299, 0.587, 0.114, 0.0]);
-    let luma1 = (a * coeffs).reduce_add();
-    let luma2 = (b * coeffs).reduce_add();
-    let luma_diff = (luma2 - luma1) * DIV_255;
-    let diffs = (a - b) * DIV_255;
-
-    (diffs * diffs * coeffs).reduce_add() * 0.75 + luma_diff * luma_diff
+    // (diffs * diffs * coeffs).reduce_add() * 0.75 + luma_diff * luma_diff
+    let dl = b.l - a.l;
+    let da = b.a - a.a;
+    let db = b.b - a.b;
+    dl * dl * 2.0 + da * da + db * db
 }
 
 type MixingPlan = [usize; MATRIX_LEN];
 
-fn devise_best_mixing_plan(
-    color: [u8; 3],
-    palette: &[[u8; 3]],
-    palette_luma: &[f32],
-    threshold: f32,
-) -> MixingPlan {
-    let src = color.map(|x| x as u32);
+fn devise_best_mixing_plan(color: Oklab, palette: &[Oklab], threshold: f32) -> MixingPlan {
     let mut result = [0; MATRIX_LEN];
 
-    let mut e = [0, 0, 0];
+    let mut e = Oklab {
+        l: 0.0,
+        a: 0.0,
+        b: 0.0,
+    };
     for (c, out_color) in result.iter_mut().enumerate() {
-        let t = [
-            src[0] + (e[0] as f32 * threshold) as u32,
-            src[1] + (e[1] as f32 * threshold) as u32,
-            src[2] + (e[2] as f32 * threshold) as u32,
-        ]
-        .map(|x| x.clamp(0, 255) as u8);
-
+        let t = Oklab {
+            l: color.l + (e.l * threshold),
+            a: color.a + (e.a * threshold),
+            b: color.b + (e.b * threshold),
+        };
         let mut least_penalty = f32::INFINITY;
         let mut chosen = c % 16;
         for (index, &palette_color) in palette.iter().enumerate() {
@@ -71,30 +64,28 @@ fn devise_best_mixing_plan(
             }
         }
         *out_color = chosen;
-        let pc = palette[chosen].map(|x| x as i32);
-        e[0] += src[0] as i32 - pc[0];
-        e[1] += src[1] as i32 - pc[1];
-        e[2] += src[2] as i32 - pc[2];
+        let pc = palette[chosen];
+        e.l += color.l - pc.l;
+        e.a += color.a - pc.a;
+        e.b += color.b - pc.b;
     }
 
-    result.sort_by(|&a, &b| palette_luma[a].total_cmp(&palette_luma[b]));
+    result.sort_by(|&a, &b| palette[a].l.total_cmp(&palette[b].l));
 
     result
 }
 
-pub fn dither(image: &RgbImage, palette: &[[u8; 3]], threshold: f32) -> Vec<u8> {
-    let palette_luma: Vec<_> = palette.iter().map(|&x| luma(x)).collect();
-
-    let pixel_count = image.width() as usize * image.height() as usize;
+pub fn dither(image: &Image<Oklab>, palette: &[Oklab], threshold: f32) -> Vec<u8> {
+    let pixel_count = image.width * image.height;
 
     (0..pixel_count)
-        .into_par_iter()
+        .into_iter()
         .map(|pixel_index| {
-            let x = pixel_index % image.width() as usize;
-            let y = pixel_index / image.width() as usize;
-            let Rgb(pixel) = image[(x as u32, y as u32)];
+            let x = pixel_index % image.width;
+            let y = pixel_index / image.width;
+            let pixel = image[(x, y)];
             let matrix_value = MATRIX[(x & 7) + ((y & 7) << 3)];
-            let plan = devise_best_mixing_plan(pixel, palette, &palette_luma, threshold);
+            let plan = devise_best_mixing_plan(pixel, palette, threshold);
             let index = plan[matrix_value as usize];
             index as u8
         })
