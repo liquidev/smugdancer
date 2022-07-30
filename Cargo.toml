@@ -3,9 +3,15 @@ name = "smugdancer"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+members = [
+    "giffel",
+]
+
 [dependencies]
 axum = "0.5.13"
 dashmap = "5.3.4"
+giffel = { version = "0.1.0", path = "giffel" }
 handlebars = "4.3.3"
 nanorand = "0.7.0"
 parking_lot = "0.12.1"

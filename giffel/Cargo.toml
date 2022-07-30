@@ -1,0 +1,10 @@
+[package]
+name = "giffel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "3.2.15", features = ["derive"] }
+image = "0.24.3"
+nanorand = "0.7.0"
+thiserror = "1.0.31"
