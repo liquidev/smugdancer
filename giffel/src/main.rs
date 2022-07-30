@@ -7,9 +7,7 @@ use std::path::PathBuf;
 use clap::Parser;
 
 use error::Error;
-use image::{DynamicImage, Rgb, RgbImage};
-
-use crate::dither::dont_dither;
+use image::{DynamicImage, RgbImage};
 
 #[derive(Parser)]
 struct Args {
@@ -34,13 +32,13 @@ fn main() -> Result<(), Error> {
         .save("/tmp/palette2.png")
         .unwrap();
 
-    let quantized: Vec<_> = dont_dither(&image, &palette)
+    let quantized: Vec<_> = dither::dither(&image, &palette, 1.0)
         .into_iter()
         .flat_map(|index| palette[index as usize])
         .collect();
     let quantized = RgbImage::from_vec(image.width(), image.height(), quantized).unwrap();
     DynamicImage::from(quantized)
-        .save("/tmp/quantized.png")
+        .save("/tmp/quantized-1.0.png")
         .unwrap();
 
     Ok(())
