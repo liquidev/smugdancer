@@ -29,11 +29,13 @@ pub fn compare_colors(a: [u8; 3], b: [u8; 3]) -> f32 {
         f32x4::new([b[0] as f32, b[1] as f32, b[2] as f32, 0.0]),
     );
 
+    const DIV_255: f32 = 1.0 / 255.0;
+
     let coeffs = f32x4::new([0.299, 0.587, 0.114, 0.0]);
     let luma1 = (a * coeffs).reduce_add();
     let luma2 = (b * coeffs).reduce_add();
-    let luma_diff = (luma2 - luma1) / 255.0;
-    let diffs = (a - b) / 255.0;
+    let luma_diff = (luma2 - luma1) * DIV_255;
+    let diffs = (a - b) * DIV_255;
 
     (diffs * diffs * coeffs).reduce_add() * 0.75 + luma_diff * luma_diff
 }
