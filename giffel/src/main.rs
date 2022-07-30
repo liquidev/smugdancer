@@ -38,7 +38,7 @@ fn main() -> Result<(), Error> {
         .collect();
     let quantized = RgbImage::from_vec(image.width(), image.height(), quantized).unwrap();
     DynamicImage::from(quantized)
-        .save("/tmp/quantized-1.0.png")
+        .save("/tmp/quantized.png")
         .unwrap();
 
     Ok(())

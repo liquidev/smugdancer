@@ -1,4 +1,5 @@
 use image::{Rgb, RgbImage};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use wide::f32x4;
 
 // https://bisqwit.iki.fi/story/howto/dither/jy/
@@ -64,7 +65,6 @@ fn devise_best_mixing_plan(
         let mut chosen = c % 16;
         for (index, &palette_color) in palette.iter().enumerate() {
             let penalty = compare_colors(palette_color, t);
-            // println!("{index} {penalty}");
             if penalty < least_penalty {
                 least_penalty = penalty;
                 chosen = index;
@@ -83,17 +83,20 @@ fn devise_best_mixing_plan(
 }
 
 pub fn dither(image: &RgbImage, palette: &[[u8; 3]], threshold: f32) -> Vec<u8> {
-    let mut result = vec![0; image.width() as usize * image.height() as usize];
     let palette_luma: Vec<_> = palette.iter().map(|&x| luma(x)).collect();
 
-    for (x, y, &Rgb(pixel)) in image.enumerate_pixels() {
-        let (x, y) = (x as usize, y as usize);
-        let matrix_value = MATRIX[(x & 7) + ((y & 7) << 3)];
-        let plan = devise_best_mixing_plan(pixel, palette, &palette_luma, threshold);
-        // println!("{x} {y} {matrix_value} {plan:?}");
-        let index = plan[matrix_value as usize];
-        result[x + y * image.width() as usize] = index as u8;
-    }
+    let pixel_count = image.width() as usize * image.height() as usize;
 
-    result
+    (0..pixel_count)
+        .into_par_iter()
+        .map(|pixel_index| {
+            let x = pixel_index % image.width() as usize;
+            let y = pixel_index / image.width() as usize;
+            let Rgb(pixel) = image[(x as u32, y as u32)];
+            let matrix_value = MATRIX[(x & 7) + ((y & 7) << 3)];
+            let plan = devise_best_mixing_plan(pixel, palette, &palette_luma, threshold);
+            let index = plan[matrix_value as usize];
+            index as u8
+        })
+        .collect()
 }
