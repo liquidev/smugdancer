@@ -1,12 +1,9 @@
-use std::fmt::Write;
-
 use image::{Rgb, RgbImage};
 use nanorand::{Rng, WyRand};
 
 #[derive(Debug)]
 struct Mean {
     position: [f32; 3],
-    color: [u8; 3],
     observations: Vec<[f32; 3]>,
 }
 
@@ -46,31 +43,16 @@ pub fn extract_palette(image: &RgbImage, colors: usize, iterations: usize) -> Ve
         observations
     };
 
-    let mut observation_circles = String::new();
-    for &observation in &observations {
-        let rgb = observation.map(|x| (x * 255.0) as u8);
-        let _ = write!(
-            observation_circles,
-            r##"<circle cx="{}" cy="{}" r="0.0025"
-                    fill="#{:02x}{:02x}{:02x}"/>"##,
-            observation[0], observation[1], rgb[0], rgb[1], rgb[2]
-        );
-    }
-
     let mut rng = WyRand::new_seed(2137);
     let mut means: Vec<_> = (0..colors)
         .map(|_| Mean {
+            // TODO: k-means++
             position: observations[rng.generate_range(0..observations.len())],
-            color: [rng.generate(), rng.generate(), rng.generate()],
             observations: vec![],
         })
         .collect();
-    println!("{:#?}", means);
 
-    for i in 0..iterations {
-        let mut means_dbg = String::new();
-
-        println!("iteration #{i}");
+    for _ in 0..iterations {
         for mean in &mut means {
             mean.observations.clear();
         }
@@ -90,39 +72,6 @@ pub fn extract_palette(image: &RgbImage, colors: usize, iterations: usize) -> Ve
                 mean.position = sum.map(|x| x / mean.observations.len() as f32);
             }
         }
-
-        for mean in &means {
-            let mut group = String::new();
-            for observation in &mean.observations {
-                let _ = write!(
-                    group,
-                    r#"<circle cx="{}" cy="{}" r="0.001"/>"#,
-                    observation[0], observation[1]
-                );
-            }
-            let _ = write!(
-                means_dbg,
-                r##"
-                    <g fill="#{:02x}{:02x}{:02x}">
-                        <circle cx="{}" cy="{}" r="0.005"/>
-                        {group}
-                    </g>
-                "##,
-                mean.color[0], mean.color[1], mean.color[2], mean.position[0], mean.position[1]
-            );
-        }
-
-        let svg = format!(
-            r#"
-                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-                    <g transform="scale(512 512) scale(1 -1) translate(0 -1)">
-                        <g stroke="black" stroke-width="0.0001">{observation_circles}</g>
-                        {means_dbg}
-                    </g>
-                </svg>
-            "#
-        );
-        std::fs::write(format!("/tmp/iteration-{i}.svg"), svg).unwrap();
     }
 
     means

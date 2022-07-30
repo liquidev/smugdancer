@@ -1,6 +1,6 @@
+mod dither;
 mod error;
-mod palettes_kmeans;
-mod palettes_mediancut;
+mod palette;
 
 use std::path::PathBuf;
 
@@ -9,7 +9,7 @@ use clap::Parser;
 use error::Error;
 use image::{DynamicImage, Rgb, RgbImage};
 
-use crate::palettes_mediancut::{extract_palette, quantize};
+use crate::dither::dont_dither;
 
 #[derive(Parser)]
 struct Args {
@@ -24,11 +24,9 @@ fn main() -> Result<(), Error> {
 
     // Extract 253 colors, reserving 3 for pure black, pure white, and transparency (index 0.)
     // Note that transparency is not handled in the quantization and dithering processes.
-    let mut palette = palettes_kmeans::extract_palette(&image, 253, 16);
+    let mut palette = palette::extract_palette(&image, 253, 16);
     palette.push([0, 0, 0]);
     palette.push([255, 255, 255]);
-    // palette[1] = [0, 0, 0];
-    // palette[255] = [255, 255, 255];
     eprintln!("{palette:?}");
     let palette_image = palette.iter().copied().flatten().collect();
     let palette_image = RgbImage::from_vec(palette.len() as u32, 1, palette_image).unwrap();
@@ -36,7 +34,7 @@ fn main() -> Result<(), Error> {
         .save("/tmp/palette2.png")
         .unwrap();
 
-    let quantized: Vec<_> = quantize(&image, &palette)
+    let quantized: Vec<_> = dont_dither(&image, &palette)
         .into_iter()
         .flat_map(|index| palette[index as usize])
         .collect();
