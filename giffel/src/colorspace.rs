@@ -91,6 +91,17 @@ pub struct Oklab {
 }
 
 impl Oklab {
+    pub const WHITE: Self = Self {
+        l: 1.0,
+        a: 0.0,
+        b: 0.0,
+    };
+    pub const BLACK: Self = Self {
+        l: 0.0,
+        a: 0.0,
+        b: 0.0,
+    };
+
     #[allow(clippy::excessive_precision)]
     pub fn to_linear(self) -> LinearRgb {
         let l_ = self.l + 0.3963377774 * self.a + 0.2158037573 * self.b;

@@ -2,6 +2,8 @@ use crate::{colorspace::Oklab, image::Image};
 
 // https://bisqwit.iki.fi/story/howto/dither/jy/
 // This uses the Knoll dithering algorithm whose patent expired in 2019.
+// The code has been altered to use the Oklab color space, which makes compare_colors
+// *a lot* faster.
 
 const MATRIX_SIZE: usize = 8;
 const MATRIX_LEN: usize = MATRIX_SIZE * MATRIX_SIZE;
@@ -18,20 +20,6 @@ const MATRIX: [u8; MATRIX_LEN] = [
 ];
 
 pub fn compare_colors(a: Oklab, b: Oklab) -> f32 {
-    // let (a, b) = (
-    //     f32x4::new([a[0] as f32, a[1] as f32, a[2] as f32, 0.0]),
-    //     f32x4::new([b[0] as f32, b[1] as f32, b[2] as f32, 0.0]),
-    // );
-
-    // const DIV_255: f32 = 1.0 / 255.0;
-
-    // let coeffs = f32x4::new([0.299, 0.587, 0.114, 0.0]);
-    // let luma1 = (a * coeffs).reduce_add();
-    // let luma2 = (b * coeffs).reduce_add();
-    // let luma_diff = (luma2 - luma1) * DIV_255;
-    // let diffs = (a - b) * DIV_255;
-
-    // (diffs * diffs * coeffs).reduce_add() * 0.75 + luma_diff * luma_diff
     let dl = b.l - a.l;
     let da = b.a - a.a;
     let db = b.b - a.b;
@@ -55,7 +43,7 @@ fn devise_best_mixing_plan(color: Oklab, palette: &[Oklab], threshold: f32) -> M
             b: color.b + (e.b * threshold),
         };
         let mut least_penalty = f32::INFINITY;
-        let mut chosen = c % 16;
+        let mut chosen = c % palette.len();
         for (index, &palette_color) in palette.iter().enumerate() {
             let penalty = compare_colors(palette_color, t);
             if penalty < least_penalty {
@@ -75,19 +63,23 @@ fn devise_best_mixing_plan(color: Oklab, palette: &[Oklab], threshold: f32) -> M
     result
 }
 
-pub fn dither(image: &Image<Oklab>, palette: &[Oklab], threshold: f32) -> Vec<u8> {
+pub fn dither(image: &Image<Oklab>, palette: &[Oklab], threshold: f32) -> Image<u8> {
     let pixel_count = image.width * image.height;
 
-    (0..pixel_count)
-        .into_iter()
-        .map(|pixel_index| {
-            let x = pixel_index % image.width;
-            let y = pixel_index / image.width;
-            let pixel = image[(x, y)];
-            let matrix_value = MATRIX[(x & 7) + ((y & 7) << 3)];
-            let plan = devise_best_mixing_plan(pixel, palette, threshold);
-            let index = plan[matrix_value as usize];
-            index as u8
-        })
-        .collect()
+    Image {
+        width: image.width,
+        height: image.height,
+        pixels: (0..pixel_count)
+            .into_iter()
+            .map(|pixel_index| {
+                let x = pixel_index % image.width;
+                let y = pixel_index / image.width;
+                let pixel = image[(x, y)];
+                let matrix_value = MATRIX[(x & 7) + ((y & 7) << 3)];
+                let plan = devise_best_mixing_plan(pixel, palette, threshold);
+                let index = plan[matrix_value as usize];
+                index as u8
+            })
+            .collect(),
+    }
 }
