@@ -5,11 +5,13 @@ reverse_proxy = false
 rate_limiting = false  # REMOVE IN PROD
 
 [render_service]
-encoder = "/usr/bin/gifski"
+encoder = "target/release/giffel"
 encoder_flags = [
+    "stitch",
+    "--archive", "data/frames.giffel",
     "--fps", "50",
     "--output", "-",
-    "{input_filenames}"
+    "{frame_indices}"
 ]
 max_jobs = 2
 

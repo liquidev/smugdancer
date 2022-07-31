@@ -1,9 +1,4 @@
-use std::{
-    ffi::OsString,
-    path::{Path, PathBuf},
-    process::Stdio,
-    sync::Arc,
-};
+use std::{ffi::OsString, path::PathBuf, process::Stdio, sync::Arc};
 
 use dashmap::DashMap;
 use serde::Deserialize;
@@ -34,8 +29,6 @@ pub struct RenderService {
 }
 
 impl RenderService {
-    const FRAMES_PATH: &'static str = "data/frames";
-
     pub fn spawn(config: RenderServiceConfig, frame_count: usize) -> RenderServiceHandle {
         let (requests_tx, mut requests_rx) = mpsc::channel(32);
         let (renders_tx, mut renders_rx) = mpsc::channel(32);
@@ -131,21 +124,17 @@ impl RenderService {
             return Err(Error::SpeedTooSlow);
         }
 
-        let mut accumulator: f64 = 0.0;
-        let mut input_filenames: Vec<_> = (0..output_frames)
-            .map(|_| {
-                let input_frame = accumulator.floor() as usize + 1;
-                accumulator += speed;
-                let path = Path::new(Self::FRAMES_PATH).join(format!("{input_frame}.png"));
-                path.into_os_string()
-            })
-            .collect();
-
         let args = {
             let mut args = vec![];
             for flag in &self.config.encoder_flags {
-                if flag == "{input_filenames}" {
-                    args.append(&mut input_filenames);
+                if flag.contains("{frame_indices}") {
+                    let mut accumulator: f64 = 0.0;
+                    args.extend((0..output_frames).map(|_| {
+                        let input_frame = accumulator.floor() as usize + 1;
+                        accumulator += speed;
+                        flag.replace("{frame_indices}", &input_frame.to_string())
+                            .into()
+                    }));
                 } else {
                     args.push(OsString::from(flag));
                 }
