@@ -2,6 +2,7 @@
 
 use std::ops::{Index, IndexMut};
 
+#[derive(Clone)]
 pub struct Image<T> {
     pub width: usize,
     pub height: usize,
@@ -9,7 +10,7 @@ pub struct Image<T> {
 }
 
 impl<T> Image<T> {
-    fn pixel_index(&self, position: (usize, usize)) -> usize {
+    pub fn pixel_index(&self, position: (usize, usize)) -> usize {
         position.0 + position.1 * self.width
     }
 }

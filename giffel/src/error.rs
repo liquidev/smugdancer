@@ -27,4 +27,6 @@ pub enum Error {
 
     #[error("Invalid framerate supplied (frame delay exceeded 65536 - how?????)")]
     InvalidFramerate,
+    #[error("No frames provided")]
+    EmptyGif,
 }

@@ -1,6 +1,6 @@
 mod archive;
 mod colorspace;
-mod delta;
+mod crop;
 mod dither;
 mod error;
 mod image;
@@ -21,7 +21,10 @@ use parking_lot::Mutex;
 use pbr::ProgressBar;
 use rayon::prelude::*;
 
-use crate::image::Image;
+use crate::{
+    crop::{crop, find_opaque_frame},
+    image::Image,
+};
 use archive::{ArchiveReader, ArchiveWriter};
 use colorspace::Oklab;
 use colorspace::Srgb;
@@ -177,6 +180,10 @@ fn stitch(command: StitchCommand) -> Result<(), Error> {
     eprintln!("{:?}", archive.dimensions);
 
     let frame_count = command.frames.len();
+    if frame_count == 0 {
+        return Err(Error::EmptyGif);
+    }
+
     let mut progress = progress_bar(frame_count as u64);
     let frames: Vec<_> = command
         .frames
@@ -185,6 +192,11 @@ fn stitch(command: StitchCommand) -> Result<(), Error> {
             let (image, palette) = archive.read_frame(index).expect("cannot read frame");
             progress.inc();
             (image, palette)
+        })
+        .map(|(image, palette)| {
+            let bounds = find_opaque_frame(&image);
+            let image = crop(&image, &bounds);
+            (image, palette, bounds)
         })
         .collect();
 
@@ -204,16 +216,16 @@ fn stitch(command: StitchCommand) -> Result<(), Error> {
     )?;
     encoder.set_repeat(gif::Repeat::Infinite)?;
     let delay = u16::try_from(100 / command.fps).map_err(|_| Error::InvalidFramerate)?;
-    for (image, palette) in frames {
+    for (image, palette, rect) in frames {
         let frame = gif::Frame {
             delay,
             dispose: DisposalMethod::Background,
             transparent: Some(255),
-            top: 0,
-            left: 0,
-            width: archive.dimensions.width,
-            height: archive.dimensions.height,
-            palette: Some(palette.into_iter().flatten().collect()),
+            left: rect.x as u16,
+            top: rect.y as u16,
+            width: rect.width as u16,
+            height: rect.height as u16,
+            palette: Some(palette.iter().copied().flatten().collect()),
             buffer: Cow::Borrowed(&image.pixels),
             interlaced: false,
             needs_user_input: false,
