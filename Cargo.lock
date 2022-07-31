@@ -466,6 +466,7 @@ name = "giffel"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "gif",
  "image",
  "nanorand",
  "parking_lot",
