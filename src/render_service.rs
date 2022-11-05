@@ -124,7 +124,7 @@ impl RenderService {
             debug!("requested speed is too fast");
             return Err(Error::SpeedTooFast);
         }
-        if output_frames > 900 {
+        if output_frames > self.animation_info.frame_count {
             debug!("requested speed is too slow");
             return Err(Error::SpeedTooSlow);
         }
