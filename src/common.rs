@@ -74,8 +74,8 @@ impl Error {
             | Self::InvalidUtf8
             | Self::ClockWentBackwards
             | Self::DirSetup(_)
-            | Self::RenderFailed(_)
             | Self::CollectGarbage(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::RenderFailed(error) => error.status_code(),
         }
     }
 
@@ -83,7 +83,12 @@ impl Error {
         (
             self.status_code(),
             Json(ErrorMessage {
-                error: self.to_string(),
+                error: match self {
+                    Self::RenderFailed(error) if error.status_code() == StatusCode::BAD_REQUEST => {
+                        error.to_string()
+                    }
+                    _ => self.to_string(),
+                },
             }),
         )
     }
