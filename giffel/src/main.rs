@@ -127,22 +127,8 @@ fn load_oklab_alpha_image(path: PathBuf) -> Result<(Image<Oklab>, Image<u8>), Er
     Ok((oklab, alpha))
 }
 
-fn archive(mut command: ArchiveCommand) -> Result<(), Error> {
-    if !command.no_sort {
-        command.images.sort_by(|a, b| {
-            'try_parse_number: {
-                let (Some(a_stem), Some(b_stem)) = (a.file_stem(), b.file_stem())
-                else { break 'try_parse_number };
-                let (Some(a_str), Some(b_str)) = (a_stem.to_str(), b_stem.to_str())
-                else { break 'try_parse_number };
-                let (Ok(x), Ok(y)) = (a_str.parse::<usize>(), b_str.parse::<usize>())
-                else { break 'try_parse_number };
-                return x.cmp(&y);
-            }
-            a.cmp(b)
-        });
-    }
-    let images: Vec<_> = command
+fn archive(command: ArchiveCommand) -> Result<(), Error> {
+    let mut images: Vec<_> = command
         .images
         .into_iter()
         .flat_map(|path| {
@@ -164,6 +150,20 @@ fn archive(mut command: ArchiveCommand) -> Result<(), Error> {
         })
         .collect();
     eprintln!("preparing images, this will take a while!");
+    if !command.no_sort {
+        images.sort_by(|a, b| {
+            'try_parse_number: {
+                let (Some(a_stem), Some(b_stem)) = (a.file_stem(), b.file_stem())
+                    else { break 'try_parse_number };
+                let (Some(a_str), Some(b_str)) = (a_stem.to_str(), b_stem.to_str())
+                    else { break 'try_parse_number };
+                let (Ok(x), Ok(y)) = (a_str.parse::<usize>(), b_str.parse::<usize>())
+                    else { break 'try_parse_number };
+                return x.cmp(&y);
+            }
+            a.cmp(b)
+        });
+    }
 
     let frame_count = images.len();
     let progress = Arc::new(Mutex::new(progress_bar(frame_count as u64)));
