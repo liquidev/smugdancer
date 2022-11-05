@@ -117,7 +117,7 @@ where
 pub struct ArchiveReader<R> {
     reader: R,
     pub dimensions: Dimensions,
-    frame_count: usize,
+    pub frame_count: usize,
 }
 
 impl<R> ArchiveReader<R>

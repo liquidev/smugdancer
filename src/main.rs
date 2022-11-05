@@ -2,6 +2,7 @@
 
 mod cacheservice;
 mod common;
+mod config;
 mod renderservice;
 
 use std::{
@@ -27,18 +28,34 @@ use serde::{Deserialize, Serialize};
 use crate::{cacheservice::GifService, common::error_response};
 
 const CONFIG_PATH: &str = "smugdancer.toml";
-const FRAMES_PATH: &str = "data/frames";
-
-// NOTE: 50 fps is a GIF limitation. See index.hbs.
-const ANIMATION_FPS: f64 = 50.0;
-// This is the number of times Hat Kid waves her hands back and forth in the animation.
-const WAVE_COUNT: f64 = 12.0;
 
 #[derive(Deserialize)]
 struct Config {
     server: ServerConfig,
     render_service: RenderServiceConfig,
     cache_service: CacheServiceConfig,
+}
+
+#[derive(Deserialize)]
+struct AnimationConfig {
+    /// The framerate at which the resulting GIF should be rendered. This value is substituted for
+    /// the argument `{fps}` in the render command.
+    ///
+    /// NOTE: 50 fps is a GIF limitation. See index.hbs.
+    fps: f64,
+    /// The number of times Hat Kid waves her hands back and forth in the animation.
+    wave_count: f64,
+    /// The way of obtaining the frame count.
+    /// For giffel archives, `Command` should be used running `giffel stat <archive> frame-count`.
+    frame_count: FrameCount,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum FrameCount {
+    Hardcoded { hardcoded: usize },
+    Directory { directory: String },
+    Command { command: String, flags: Vec<String> },
 }
 
 #[derive(Deserialize)]
@@ -63,12 +80,8 @@ fn enabled() -> bool {
     true
 }
 
-fn count_frames() -> usize {
-    std::fs::read_dir(FRAMES_PATH)
-        .expect("cannot read_dir from FRAMES_PATH")
-        .filter(|result| result.is_ok())
-        .count()
-}
+/// Resolved info about an animation.
+struct AnimationInfo {}
 
 fn get_minimum_bpm(frame_count: f64) -> f64 {
     WAVE_COUNT * ANIMATION_FPS * 60.0 / frame_count

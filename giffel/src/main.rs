@@ -47,6 +47,8 @@ enum Command {
     Archive(ArchiveCommand),
     /// Stitch frames from an archive into a GIF.
     Stitch(StitchCommand),
+    /// Return stats about an archive.
+    Stat(StatCommand),
 }
 
 #[derive(Args)]
@@ -75,6 +77,25 @@ struct StitchCommand {
     /// coming from multiples of 10ms, greater than 20ms are supported (50 fps is the limit.)
     #[clap(short = 'r', long, default_value = "25")]
     fps: u32,
+}
+
+#[derive(Subcommand)]
+enum StatTarget {
+    /// Get the width of the image stored in the archive.
+    Width,
+    /// Get the height of the image stored in the archive.
+    Height,
+    /// Get the number of images stored in the archive.
+    FrameCount,
+}
+
+#[derive(Args)]
+struct StatCommand {
+    /// The archive to stat.
+    archive: PathBuf,
+    /// What to stat.
+    #[clap(subcommand)]
+    target: StatTarget,
 }
 
 fn progress_bar(max: u64) -> ProgressBar<Stderr> {
@@ -109,25 +130,47 @@ fn load_oklab_alpha_image(path: PathBuf) -> Result<(Image<Oklab>, Image<u8>), Er
 fn archive(mut command: ArchiveCommand) -> Result<(), Error> {
     if !command.no_sort {
         command.images.sort_by(|a, b| {
-            if let (Some(a_stem), Some(b_stem)) = (a.file_stem(), b.file_stem())
-                && let (Some(a_str), Some(b_str)) = (a_stem.to_str(), b_stem.to_str())
-                && let (Ok(x), Ok(y)) = (a_str.parse::<usize>(), b_str.parse::<usize>())
-            {
-                x.cmp(&y)
-            } else {
-                a.cmp(b)
+            'try_parse_number: {
+                let (Some(a_stem), Some(b_stem)) = (a.file_stem(), b.file_stem())
+                else { break 'try_parse_number };
+                let (Some(a_str), Some(b_str)) = (a_stem.to_str(), b_stem.to_str())
+                else { break 'try_parse_number };
+                let (Ok(x), Ok(y)) = (a_str.parse::<usize>(), b_str.parse::<usize>())
+                else { break 'try_parse_number };
+                return x.cmp(&y);
             }
+            a.cmp(b)
         });
     }
+    let images: Vec<_> = command
+        .images
+        .into_iter()
+        .flat_map(|path| {
+            if path.is_dir() {
+                eprintln!("reading all files from input directory {path:?}");
+                let iter = match std::fs::read_dir(path) {
+                    Ok(iter) => iter,
+                    Err(error) => {
+                        eprintln!("cannot read input directory: {error}");
+                        return vec![];
+                    }
+                };
+                iter.flat_map(|result| result.ok())
+                    .map(|entry| entry.path())
+                    .collect()
+            } else {
+                vec![path]
+            }
+        })
+        .collect();
     eprintln!("preparing images, this will take a while!");
 
-    let frame_count = command.images.len();
+    let frame_count = images.len();
     let progress = Arc::new(Mutex::new(progress_bar(frame_count as u64)));
     progress
         .lock()
         .set_max_refresh_rate(Some(Duration::from_millis(20)));
-    let frames: Vec<_> = command
-        .images
+    let frames: Vec<_> = images
         .into_par_iter()
         .map({
             let progress = Arc::clone(&progress);
@@ -239,12 +282,26 @@ fn stitch(command: StitchCommand) -> Result<(), Error> {
     Ok(())
 }
 
+fn stat(command: StatCommand) -> Result<(), Error> {
+    let archive = File::open(&command.archive)?;
+    let reader = ArchiveReader::new(archive)?;
+
+    match command.target {
+        StatTarget::Width => println!("{}", reader.dimensions.width),
+        StatTarget::Height => println!("{}", reader.dimensions.height),
+        StatTarget::FrameCount => println!("{}", reader.frame_count),
+    }
+
+    Ok(())
+}
+
 fn main() -> Result<(), Error> {
     let args = Cli::parse();
 
     match args.command {
         Command::Archive(cmd) => archive(cmd)?,
         Command::Stitch(cmd) => stitch(cmd)?,
+        Command::Stat(cmd) => stat(cmd)?,
     }
 
     Ok(())

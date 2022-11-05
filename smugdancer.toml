@@ -4,12 +4,17 @@ root = "localhost:8080"
 reverse_proxy = false
 rate_limiting = false  # REMOVE IN PROD
 
+[animation]
+fps = 50
+wave_count = 12
+frame_count = { command = "target/release/giffel", flags = ["stat", "data/frames.giffel", "frame-count"] }
+
 [render_service]
 encoder = "target/release/giffel"
 encoder_flags = [
     "stitch",
     "--archive", "data/frames.giffel",
-    "--fps", "50",
+    "--fps", "{fps}",
     "--output", "-",
     "{frame_indices}"
 ]
