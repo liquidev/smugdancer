@@ -6,8 +6,9 @@ use tokio::{
     process::Command,
     sync::{mpsc, oneshot, Semaphore},
 };
+use tracing::{debug, error, info, instrument, trace};
 
-use crate::common::Error;
+use crate::{animation_info::AnimationInfo, common::Error};
 
 #[derive(Deserialize, Clone)]
 pub struct RenderServiceConfig {
@@ -22,20 +23,23 @@ pub struct RenderServiceConfig {
 
 pub struct RenderService {
     config: RenderServiceConfig,
-    frame_count: usize,
+    animation_info: AnimationInfo,
     queues: DashMap<u64, Vec<oneshot::Sender<RenderResult>>>,
     render_requests: mpsc::Sender<f64>,
     render_jobs: Semaphore,
 }
 
 impl RenderService {
-    pub fn spawn(config: RenderServiceConfig, frame_count: usize) -> RenderServiceHandle {
+    pub fn spawn(
+        config: RenderServiceConfig,
+        animation_info: AnimationInfo,
+    ) -> RenderServiceHandle {
         let (requests_tx, mut requests_rx) = mpsc::channel(32);
         let (renders_tx, mut renders_rx) = mpsc::channel(32);
         let (completed_renders_tx, mut completed_renders_rx) = mpsc::channel(8);
 
         let service = Arc::new(RenderService {
-            frame_count,
+            animation_info,
             queues: DashMap::new(),
             render_requests: renders_tx,
             render_jobs: Semaphore::new(config.max_jobs),
@@ -44,9 +48,9 @@ impl RenderService {
         tokio::spawn({
             let service = Arc::clone(&service);
             async move {
-                tracing::info!("render management task is ready");
+                info!("render management task is ready");
                 loop {
-                    tracing::trace!("waiting for messages from threads");
+                    trace!("waiting for messages from threads");
                     tokio::select! {
                         Some(request) = requests_rx.recv() => service.handle_request(request).await,
                         Some((speed, result)) = completed_renders_rx.recv() => {
@@ -57,10 +61,10 @@ impl RenderService {
             }
         });
         tokio::spawn(async move {
-            tracing::info!("render task is ready");
+            info!("render task is ready");
             // NOTE: Render requests are not handled in separate threads (yet.)
             while let Some(speed) = renders_rx.recv().await {
-                tracing::trace!("got render request for {speed}x");
+                trace!(speed, "got render request");
                 let completed_renders_tx = completed_renders_tx.clone();
                 let service = Arc::clone(&service);
                 tokio::spawn(async move {
@@ -79,13 +83,13 @@ impl RenderService {
 
     async fn handle_request(&self, request: QueueRequest) {
         let QueueRequest { speed, responder } = request;
-        tracing::trace!("got queue request for {speed}x");
+        trace!(speed, "got queue request");
 
         let mut queue = self.queues.entry(speed.to_bits()).or_default();
         let request_render = queue.is_empty();
         queue.push(responder);
         if request_render {
-            tracing::trace!("queue is empty, sending render request");
+            trace!("queue is empty, sending render request");
             self.render_requests
                 .send(speed)
                 .await
@@ -107,20 +111,21 @@ impl RenderService {
         });
     }
 
+    #[instrument(level = "debug", name = "render", skip(self))]
     async fn render_speed(&self, speed: f64) -> Result<Vec<u8>, Error> {
         // The permit must be given here because we never close the semaphore, thus it is
         // safe to unwrap.
         let _permit = self.render_jobs.acquire().await.unwrap();
 
-        tracing::debug!("starting render for {speed}x speed");
+        debug!("starting render");
 
-        let output_frames = (self.frame_count as f64 / speed).floor() as usize;
+        let output_frames = (self.animation_info.frame_count as f64 / speed).floor() as usize;
         if output_frames <= 1 {
-            tracing::debug!("requested speed is too fast");
+            debug!("requested speed is too fast");
             return Err(Error::SpeedTooFast);
         }
         if output_frames > 900 {
-            tracing::debug!("requested speed is too slow");
+            debug!("requested speed is too slow");
             return Err(Error::SpeedTooSlow);
         }
 
@@ -135,15 +140,18 @@ impl RenderService {
                         flag.replace("{frame_indices}", &input_frame.to_string())
                             .into()
                     }));
+                } else if flag.contains("{fps}") {
+                    args.push(OsString::from(self.animation_info.fps.to_string()))
                 } else {
                     args.push(OsString::from(flag));
                 }
             }
             args
         };
-        tracing::trace!(
-            "starting render job using encoder {:?}",
-            self.config.encoder
+        trace!(
+            ?self.config.encoder,
+            ?args,
+            "starting render job",
         );
         let output = Command::new(&self.config.encoder)
             .stdout(Stdio::piped())
@@ -154,7 +162,12 @@ impl RenderService {
             .await
             .map_err(Error::Encoder)?;
 
-        tracing::debug!("render of {speed}x speed complete");
+        if !output.status.success() {
+            error!(exit_code = ?output.status, "encoder finished with a non-zero exit code");
+            return Err(Error::EncoderExitCode);
+        }
+
+        debug!("render complete");
 
         Ok(output.stdout)
     }

@@ -53,7 +53,16 @@ function loadSmugDance() {
             pleaseWait.hidden = true
             const text = new TextDecoder("utf-8").decode(xhr.response)
             const err = JSON.parse(text)
-            error.innerText = err.error
+            if (xhr.status == 500) {
+                error.innerHTML = `
+                    I'm extremely sorry but an error occured on the server: <br>
+                    <em>${err.error}</em><br>
+                    This is not your fault. Please report this, including the full error message, at
+                    <a href="https://github.com/liquidev/smugdancer/issues">the server's issue tracker</a>.
+                `
+            } else {
+                error.innerText = err.error
+            }
         }
     }
     xhr.open("GET", link)

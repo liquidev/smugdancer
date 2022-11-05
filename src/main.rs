@@ -1,9 +1,10 @@
 #![allow(clippy::or_fun_call)]
 
-mod cacheservice;
+mod animation_info;
+mod cache_service;
 mod common;
 mod config;
-mod renderservice;
+mod render_service;
 
 use std::{
     net::{IpAddr, SocketAddr},
@@ -18,80 +19,19 @@ use axum::{
     routing::get,
     Extension, Router,
 };
-use cacheservice::{CacheServiceConfig, CacheServiceHandle};
+use cache_service::CacheServiceHandle;
 use common::ErrorResponse;
+use config::ServerConfig;
 use dashmap::DashSet;
 use handlebars::Handlebars;
-use renderservice::{RenderService, RenderServiceConfig};
-use serde::{Deserialize, Serialize};
+use render_service::RenderService;
+use serde::Serialize;
+use tracing::{debug, info};
 
-use crate::{cacheservice::GifService, common::error_response};
-
-const CONFIG_PATH: &str = "smugdancer.toml";
-
-#[derive(Deserialize)]
-struct Config {
-    server: ServerConfig,
-    render_service: RenderServiceConfig,
-    cache_service: CacheServiceConfig,
-}
-
-#[derive(Deserialize)]
-struct AnimationConfig {
-    /// The framerate at which the resulting GIF should be rendered. This value is substituted for
-    /// the argument `{fps}` in the render command.
-    ///
-    /// NOTE: 50 fps is a GIF limitation. See index.hbs.
-    fps: f64,
-    /// The number of times Hat Kid waves her hands back and forth in the animation.
-    wave_count: f64,
-    /// The way of obtaining the frame count.
-    /// For giffel archives, `Command` should be used running `giffel stat <archive> frame-count`.
-    frame_count: FrameCount,
-}
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum FrameCount {
-    Hardcoded { hardcoded: usize },
-    Directory { directory: String },
-    Command { command: String, flags: Vec<String> },
-}
-
-#[derive(Deserialize)]
-struct ServerConfig {
-    /// The port under which smugdancer should serve.
-    port: u16,
-    /// The root URL that's shown on the documentation website.
-    root: String,
-    /// Set to `false` to disable rate limiting. This is available for testing in development
-    /// environments, where getting multiple IP addresses to circumvent rate limits is not
-    /// practical. On production servers this should be **always** enabled.
-    #[serde(default = "enabled")]
-    rate_limiting: bool,
-    /// Set to `true` if the server is behind a reverse proxy like nginx.
-    /// This makes it use the X-Forwarded-For header for rate limiting instead of the connection's
-    /// IP address.
-    #[serde(default)]
-    reverse_proxy: bool,
-}
-
-fn enabled() -> bool {
-    true
-}
-
-/// Resolved info about an animation.
-struct AnimationInfo {}
-
-fn get_minimum_bpm(frame_count: f64) -> f64 {
-    WAVE_COUNT * ANIMATION_FPS * 60.0 / frame_count
-}
-
-fn quantize_bpm_to_nearest_supported(bpm: f64) -> f64 {
-    let unrounded_frame_count = WAVE_COUNT * ANIMATION_FPS * 60.0 / bpm;
-    let frame_count = unrounded_frame_count.floor();
-    WAVE_COUNT * ANIMATION_FPS * 60.0 / frame_count
-}
+use crate::{
+    animation_info::AnimationInfo, cache_service::GifService, common::error_response,
+    config::Config,
+};
 
 #[derive(Serialize)]
 struct TemplateDataConfig {
@@ -148,10 +88,10 @@ fn render_index(config: TemplateDataConfig) -> Pages {
 struct State {
     /// The config file.
     config: ServerConfig,
+    /// The info about the animation.
+    animation_info: AnimationInfo,
     /// The index containing documentation.
     pages: Pages,
-    /// The BPM of the source animation.
-    source_bpm: f64,
     /// The GIF service.
     gif_service: CacheServiceHandle,
     /// A map of IP addresses that are currently waiting in the render queue. These IPs will be
@@ -198,13 +138,15 @@ async fn render_animation(
 
     if !state.config.rate_limiting || state.waiting_clients.insert(ip) {
         // WARNING: DO NOT USE THE `?` OPERATOR UNTIL THE CLIENT IS REMOVED FROM THE WAIT LIST!!!
-        let bpm = quantize_bpm_to_nearest_supported(unquantized_bpm);
-        tracing::debug!(
+        let bpm = state
+            .animation_info
+            .quantize_bpm_to_nearest_supported(unquantized_bpm);
+        debug!(
             "serving {bpm} bpm (quantized from {unquantized_bpm} bpm) to {}",
             ip
         );
 
-        let speed = bpm / state.source_bpm;
+        let speed = bpm / state.animation_info.minimum_bpm();
         let result = state
             .gif_service
             .request_speed(speed)
@@ -220,7 +162,7 @@ async fn render_animation(
             .insert("Content-Type", "image/gif".try_into().unwrap());
         Ok(response)
     } else {
-        tracing::debug!(
+        debug!(
             "{} (requesting {unquantized_bpm} bpm) is being rate limited",
             ip
         );
@@ -232,27 +174,33 @@ async fn render_animation(
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    tracing::debug!("loading config from {CONFIG_PATH}");
-    let config = std::fs::read_to_string(CONFIG_PATH).expect("failed to load config file");
+    let config = std::fs::read_to_string(config::PATH).expect("failed to load config file");
     let config: Config = toml::from_str(&config).expect("config TOML deserialization error");
+    debug!(path = config::PATH, "loaded config file");
 
-    let frame_count = count_frames();
-    let minimum_bpm = get_minimum_bpm(frame_count as f64);
-    tracing::debug!("found {frame_count} animation frames");
-    tracing::debug!("given {WAVE_COUNT} waves at {ANIMATION_FPS} fps, the minimum bpm for playback at full framerate is {minimum_bpm}");
+    let animation_info = AnimationInfo::from_config(&config.animation);
+    debug!(?animation_info, "resolved animation info");
 
-    let render_service = RenderService::spawn(config.render_service, frame_count);
+    let minimum_bpm = animation_info.minimum_bpm();
+    debug!(
+        minimum_bpm,
+        "calculated minimum tempo (given {} waves at {} fps)",
+        animation_info.wave_count,
+        animation_info.fps
+    );
+
+    let render_service = RenderService::spawn(config.render_service, animation_info.clone());
     let gif_service =
         GifService::spawn(config.cache_service, render_service).expect("cannot spawn GIF service");
 
     let port = config.server.port;
     let state = Arc::new(State {
+        animation_info,
         pages: render_index(TemplateDataConfig {
             root: config.server.root.clone(),
             minimum_bpm,
         }),
         config: config.server,
-        source_bpm: minimum_bpm,
         gif_service,
         waiting_clients: DashSet::new(),
     });
@@ -265,7 +213,7 @@ async fn main() {
         .layer(Extension(state));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    tracing::info!("listening on {addr}");
+    info!("listening on {addr}");
     axum::Server::bind(&addr)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await

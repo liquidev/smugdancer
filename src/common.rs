@@ -32,6 +32,8 @@ pub enum Error {
 
     #[error("GIF encoding process: {0}")]
     Encoder(io::Error),
+    #[error("GIF encoder finished with a non-zero exit code")]
+    EncoderExitCode,
     #[error("Cache database: {0}")]
     CacheDb(#[from] rusqlite::Error),
     #[error("Database query: {0}")]
@@ -62,6 +64,7 @@ impl Error {
         match self {
             Self::SpeedTooFast | Self::SpeedTooSlow => StatusCode::BAD_REQUEST,
             Self::Encoder(_)
+            | Self::EncoderExitCode
             | Self::CacheDb(_)
             | Self::DbQuery(_)
             | Self::CannotReadGif(_)

@@ -9,8 +9,9 @@ use std::{
 use parking_lot::Mutex;
 use serde::Deserialize;
 use tokio::sync::{mpsc, oneshot};
+use tracing::{debug, error, info, info_span};
 
-use crate::{common::Error, renderservice::RenderServiceHandle};
+use crate::{common::Error, render_service::RenderServiceHandle};
 
 #[derive(Clone, Deserialize)]
 pub struct CacheServiceConfig {
@@ -28,10 +29,10 @@ pub struct CacheServiceConfig {
 
 impl CacheServiceConfig {
     pub fn setup(&self) -> Result<rusqlite::Connection, Error> {
-        tracing::debug!("creating cache directories");
+        debug!("creating cache directories");
         std::fs::create_dir_all(&self.cache_dir).map_err(Error::DirSetup)?;
 
-        tracing::debug!("opening connection to cache database");
+        debug!("opening connection to cache database");
         let database = rusqlite::Connection::open(&self.database)?;
         database.execute(
             r#"
@@ -67,26 +68,8 @@ impl GifService {
             render_service,
             database,
         });
-        // NOTE: Render requests are handled in a queue, unlike GIF requests which are handled
-        // concurrently.
-        // tokio::spawn({
-        //     let config = Arc::clone(&service.config);
-        //     async move {
-        //         tracing::info!("render task is ready");
-        //         while let Some(request) = render_rx.recv().await {
-        //             Self::handle_render_request(
-        //                 request,
-        //                 RenderParams {
-        //                     frame_count,
-        //                     config: &config,
-        //                 },
-        //             )
-        //             .await;
-        //         }
-        //     }
-        // });
         tokio::spawn(async move {
-            tracing::info!("cache task is ready");
+            info!("cache task is ready");
             while let Some(request) = requests_rx.recv().await {
                 let service = Arc::clone(&service);
                 tokio::spawn(async move { service.handle_request(request).await });
@@ -104,16 +87,16 @@ impl GifService {
     }
 
     async fn handle_request_inner(&self, speed: f64) -> Result<Vec<u8>, Error> {
-        tracing::debug!("handling request for {speed}x speed");
+        debug!(speed, "handling cache request");
         let cached_filename = self.config.cache_dir.join(Self::get_cached_filename(speed));
 
         let file = if !cached_filename.exists() {
             // GC errors are non-fatal.
             if let Err(error) = self.collect_garbage().await {
-                tracing::error!("{error}")
+                error!("{error}")
             }
 
-            tracing::debug!("this speed is not cached yet, rendering");
+            debug!("this speed is not cached yet, rendering");
             let (gif, position_in_queue) = self
                 .render_service
                 .render_speed(speed)
@@ -180,9 +163,10 @@ impl GifService {
 
         let mut total_size: u64 = entries.iter().map(|(_, metadata)| metadata.len()).sum();
         if total_size >= self.config.limit {
-            tracing::info!(
-                "purging cache (exceeded limit of {} bytes - now at {total_size})",
-                self.config.limit
+            let _span = info_span!("cache_purge");
+            info!(
+                self.config.limit,
+                total_size, "purging cache (limit was exceeded)"
             );
 
             let database = Arc::clone(&self.database);
@@ -224,11 +208,11 @@ impl GifService {
                     .map_err(Error::CollectGarbage)
                 {
                     Ok(_) => {
-                        tracing::debug!("cache purge: removed {filename:?}");
+                        debug!(?filename, "removed file");
                         removed.push(filename);
                     }
                     Err(error) => {
-                        tracing::debug!("cache purge: cannot remove {filename:?}: {error}")
+                        debug!(?filename, %error, "cannot remove file")
                     }
                 }
             }
