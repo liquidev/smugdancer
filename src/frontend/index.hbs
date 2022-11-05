@@ -19,9 +19,13 @@
     <div id="content">
         <p>Enter a tempo and press the button to generate a GIF of Hat Kid dancing!</p>
 
-        <input id="bpm" name="bpm" type="number" min="40" max="18000" value="120" step="any">
-        <label for="bpm">BPM</label><br>
-        <button id="pretty-please">Pretty please</button>
+        <div id="input-form">
+            <input id="bpm" name="bpm" type="number" min="40" max="18000" value="120" step="any">
+            <label for="bpm">BPM</label>
+            <button id="tap-tempo">Tap</button>
+            <br>
+            <button id="pretty-please">Pretty please</button>
+        </div>
 
         <div id="please-wait" hidden="true">
             <p>Please wait, Hat Kid is recording herself doing the dance…</p>

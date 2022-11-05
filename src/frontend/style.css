@@ -1,5 +1,9 @@
+:root {
+    --font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
 html {
-    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-family: var(--font-family);
 }
 
 body {
@@ -40,4 +44,14 @@ hr {
 
 #dance {
     margin-top: 1em;
+}
+
+#input-form,
+#input-form>* {
+    font-size: 16px;
+    font-family: var(--font-family);
+}
+
+#bpm {
+    width: 5em;
 }

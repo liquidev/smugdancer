@@ -1,6 +1,7 @@
 const bpmInput = document.getElementById("bpm")
 const prettyPlease = document.getElementById("pretty-please")
 const pleaseWait = document.getElementById("please-wait")
+const tapTempo = document.getElementById("tap-tempo")
 const results = document.getElementById("results")
 let dance = document.getElementById("dance")
 const permalink = document.getElementById("permalink")
@@ -29,7 +30,6 @@ function loadSmugDance() {
     permalink.href = link
 
     const img = new Image()
-    // img.src = link
     dance.parentElement.replaceChild(img, dance)
     dance = img
 
@@ -37,7 +37,6 @@ function loadSmugDance() {
     xhr.responseType = "arraybuffer"
     progress.removeAttribute("value")
     xhr.onprogress = (event) => {
-        console.log(event)
         if (event.lengthComputable) {
             progress.value = event.loaded / event.total
         }
@@ -71,3 +70,28 @@ function loadSmugDance() {
 
 prettyPlease.onclick = loadSmugDance
 dance.onload = smugDanceLoaded
+
+let tapTempoClickTimes = []
+tapTempo.onclick = () => {
+    tapTempoClickTimes.push(performance.now())
+    if (tapTempoClickTimes.length > 32) {
+        tapTempoClickTimes.splice(0, 1)
+    }
+
+    let averageDeltaMs = 0
+    for (let i = 0; i < tapTempoClickTimes.length - 1; ++i) {
+        const [first, second] = [tapTempoClickTimes[i], tapTempoClickTimes[i + 1]];
+        const delta = second - first
+        averageDeltaMs += delta
+    }
+    averageDeltaMs /= tapTempoClickTimes.length - 1
+
+    const averageBpm = 1000 / averageDeltaMs * 60
+    if (averageBpm < 60) {
+        tapTempoClickTimes.splice(0);
+    }
+
+    if (tapTempoClickTimes.length > 4) {
+        bpmInput.value = Math.round(averageBpm).toString()
+    }
+}
