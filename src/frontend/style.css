@@ -1,5 +1,5 @@
 :root {
-    --font-family: 'Lexend', 'Segoe UI', system-ui, sans-serif;
+    --font-family: '__Lexend', system-ui, sans-serif;
 
     --background: #4a3ebd;
     --background-error: #bd443e;
@@ -30,6 +30,13 @@
     --tap-8: #ffffff;
 }
 
+/* Fonts */
+
+@font-face {
+    font-family: '__Lexend';
+    src: url('font.ttf') format('truetype-variations');
+}
+
 /* Boilerplate. */
 
 body {
@@ -54,9 +61,14 @@ p:last-child {
     margin-bottom: 0;
 }
 
+li:not(:last-child) {
+    margin-bottom: 1em;
+}
+
 /* Common styling */
 
 html {
+    background-color: var(--background);
     color: var(--text);
 
     font-family: var(--font-family);
@@ -140,11 +152,6 @@ main.application {
     text-align: center;
 }
 
-.center-of-page {
-    position: relative;
-    top: 50%;
-}
-
 footer {
     position: fixed;
     left: 1em;
@@ -184,7 +191,21 @@ footer a:hover {
 }
 
 .input-form-separator {
-    margin: 0 1em 0 1em;
+    margin: 0.5em 1em;
+}
+
+@media screen and (max-width: 480px) {
+    #tempo-selection {
+        flex-direction: column;
+    }
+
+    .input-form-separator {
+        display: none;
+    }
+
+    .input-pill:not(:last-child) {
+        margin-bottom: 0.5em;
+    }
 }
 
 /* Tempo pill look and feel */

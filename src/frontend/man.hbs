@@ -59,9 +59,8 @@
         URL contains the <code>.gif</code> extension.
     </p>
     <p>
-        The minimum supported tempo is {{minimum_bpm}} BPM. Lower values will work, but the resulting GIF might (will,
-        even!) stutter.
-        Besides, what kind of person would want to dance to music that's slower than 60 BPM?
+        The tempo must be within the range between {{minimum_bpm}} and 18000 BPM. Values falling outside the range will
+        result in 400 Bad Request.
     </p>
     <p>
         If an error occurs, a JSON response in the form of an object <code>{"error":"message"}</code> will be returned.
@@ -111,16 +110,11 @@
         </li>
         <li>
             <p>
-                600 frames is not enough to provide a neat'n'smooth animation across all framerates, so you may see
-                slight stuttering sometimes. I might add more frames to the source render someday, but I <em>really</em>
-                don't feel like doing it right now. Rendering with Cycles on the CPU is really slow.
-            </p>
-        </li>
-        <li>
-            <p>
                 There's no way to swap out hats, give Hat Kid double sunglasses, or anything of that sort,
-                unfortunately. The source render weighs in at about 400 MiB and I really do not have the bandwidth to
-                upload much more in a reasonable amount of time. Also, see previous bullet point.
+                unfortunately. Each variation would need a separate render and I don't have a computer that's powerful
+                enough to render Hat Kid, Hat Kid with sunglasses, Hat Kid with double sunglasses, Hat Kid with
+                the Sprint Hat, Hat Kid with the Sprint Hat with sunglasses, … and so on. Maybe someday raytracers will
+                become fast enough to do this on demand.
             </p>
         </li>
     </ul>

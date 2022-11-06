@@ -135,6 +135,11 @@ async fn css(Extension(state): Extension<Arc<State>>) -> impl IntoResponse {
     ([("content-type", "text/css")], state.pages.css.clone())
 }
 
+async fn font() -> impl IntoResponse {
+    const FONT: &[u8] = include_bytes!("frontend/fonts/Lexend-VariableFont_wght.ttf");
+    ([("content-type", "font/ttf")], FONT)
+}
+
 async fn render_animation(
     Extension(state): Extension<Arc<State>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -250,6 +255,7 @@ async fn main() {
         .route("/index.html", get(index))
         .route("/man", get(man))
         .route("/pricing", get(pricing))
+        .route("/font.ttf", get(font))
         .route("/:query", get(render_animation));
     #[cfg(debug_assertions)]
     let app = app //
