@@ -155,11 +155,21 @@ footer {
 
 footer {
     font-size: 16px;
-    opacity: 60%;
 }
 
 footer a {
+    display: block;
+    margin-top: 0.5em;
+
+    opacity: 60%;
+
     text-decoration: none;
+
+    transition: 0.3s opacity;
+}
+
+footer a:hover {
+    opacity: 100%;
 }
 
 /* Layout of the tempo selection stuff */

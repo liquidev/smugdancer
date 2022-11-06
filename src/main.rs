@@ -15,7 +15,7 @@ use std::{
 use axum::{
     extract::{ConnectInfo, Path as UrlPath},
     http::{HeaderMap, StatusCode},
-    response::{Html, IntoResponse, Response},
+    response::{Html, IntoResponse, Redirect, Response},
     routing::get,
     Extension, Router,
 };
@@ -198,6 +198,18 @@ async fn render_animation(
     }
 }
 
+async fn pricing() -> Redirect {
+    const PRICING_PAGE: &str = match std::str::from_utf8(&[
+        104, 116, 116, 112, 115, 58, 47, 47, 119, 119, 119, 46, 121, 111, 117, 116, 117, 98, 101,
+        46, 99, 111, 109, 47, 119, 97, 116, 99, 104, 63, 118, 61, 100, 81, 119, 52, 119, 57, 87,
+        103, 88, 99, 81,
+    ]) {
+        Ok(s) => s,
+        Err(..) => panic!("invalid UTF-8"),
+    };
+    Redirect::to(PRICING_PAGE)
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -237,6 +249,7 @@ async fn main() {
         .route("/", get(index))
         .route("/index.html", get(index))
         .route("/man", get(man))
+        .route("/pricing", get(pricing))
         .route("/:query", get(render_animation));
     #[cfg(debug_assertions)]
     let app = app //
