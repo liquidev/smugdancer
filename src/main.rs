@@ -43,21 +43,23 @@ struct TemplateDataConfig {
 struct TemplateData {
     #[serde(flatten)]
     config: TemplateDataConfig,
-    css: String,
-    js: String,
+    include_css: String,
+    include_js: String,
 }
 
 #[derive(Clone)]
 struct Pages {
     index: String,
     man: String,
+    css: String,
+    js: String,
 }
 
 fn render_index(config: TemplateDataConfig) -> Pages {
     const INDEX_HBS: &str = include_str!("frontend/index.hbs");
     const MAN_HBS: &str = include_str!("frontend/man.hbs");
-    const CSS: &str = concat!("<style>", include_str!("frontend/style.css"), "</style>");
-    const JS: &str = concat!("<script>", include_str!("frontend/index.js"), "</script>");
+    const CSS: &str = include_str!("frontend/style.css");
+    const JS: &str = include_str!("frontend/index.js");
 
     let mut hbs = Handlebars::new();
     hbs.register_template_string("index", INDEX_HBS)
@@ -67,11 +69,24 @@ fn render_index(config: TemplateDataConfig) -> Pages {
     hbs.register_template_string("js", JS)
         .expect("error in js template");
 
+    let rendered_js = hbs
+        .render("js", &config)
+        .expect("cannot render js template");
+
+    let include_css = if cfg!(debug_assertions) {
+        r#" <link rel="stylesheet" href="style.css"></link> "#.to_string()
+    } else {
+        format!("<style>{CSS}</style>")
+    };
+    let include_js = if cfg!(debug_assertions) {
+        r#" <script src="index.js"></script> "#.to_string()
+    } else {
+        format!("<script>{rendered_js}</script>")
+    };
+
     let template_data = TemplateData {
-        css: CSS.to_string(),
-        js: hbs
-            .render("js", &config)
-            .expect("cannot render js template"),
+        include_css,
+        include_js,
         config,
     };
 
@@ -82,6 +97,8 @@ fn render_index(config: TemplateDataConfig) -> Pages {
         man: hbs
             .render("man", &template_data)
             .expect("cannot render index template"),
+        css: CSS.to_owned(),
+        js: rendered_js,
     }
 }
 
@@ -105,6 +122,17 @@ async fn index(Extension(state): Extension<Arc<State>>) -> Html<String> {
 
 async fn man(Extension(state): Extension<Arc<State>>) -> Html<String> {
     Html(state.pages.man.clone())
+}
+
+async fn js(Extension(state): Extension<Arc<State>>) -> impl IntoResponse {
+    (
+        [("content-type", "application/javascript")],
+        state.pages.js.clone(),
+    )
+}
+
+async fn css(Extension(state): Extension<Arc<State>>) -> impl IntoResponse {
+    ([("content-type", "text/css")], state.pages.css.clone())
 }
 
 async fn render_animation(
@@ -209,8 +237,12 @@ async fn main() {
         .route("/", get(index))
         .route("/index.html", get(index))
         .route("/man", get(man))
-        .route("/:query", get(render_animation))
-        .layer(Extension(state));
+        .route("/:query", get(render_animation));
+    #[cfg(debug_assertions)]
+    let app = app //
+        .route("/index.js", get(js))
+        .route("/style.css", get(css));
+    let app = app.layer(Extension(state));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     info!("listening on {addr}");

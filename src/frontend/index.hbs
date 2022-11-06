@@ -5,7 +5,7 @@
 <head>
     <title>Smug dance as a Service (SaaS)</title>
 
-    {{{css}}}
+    {{{include_css}}}
 
     <meta property="og:title" content="Smug dance as a Service">
     <meta property="og:type" content="website">
@@ -13,41 +13,57 @@
     <meta property="og:description" content="Generate a GIF of Hat Kid dancing at any tempo!">
 </head>
 
-<body>
-    <h1>Smug dance as a Service</h1>
-
-    <div id="content">
-        <p>Enter a tempo and press the button to generate a GIF of Hat Kid dancing!</p>
+<body data-state="idle">
+    <main class="application">
+        <p id="instructions">Enter a tempo and press the button to generate a GIF of Hat Kid dancing!</p>
 
         <div id="input-form">
-            <input id="bpm" name="bpm" type="number" min="40" max="18000" value="120" step="any">
-            <label for="bpm">BPM</label>
-            <button id="tap-tempo">Tap</button>
-            <br>
-            <button id="pretty-please">Pretty please</button>
+            <div id="tempo-selection">
+                <span class="input-pill" id="bpm-input-pill">
+                    <input id="bpm" name="bpm" type="text" min="{{minimum_bpm}}" max="18000" value="128" step="any">
+                    <label for="bpm" id="bpm-drag">bpm</label>
+                </span>
+
+                <span class="input-form-separator">or</span>
+
+                <span class="input-pill" id="tap-tempo-input-pill">
+                    <button id="tap-tempo">tap</button>
+                    <span class="tap"></span>
+                    <span class="tap"></span>
+                    <span class="tap"></span>
+                    <span class="tap"></span>
+                </span>
+            </div>
+            <button id="pretty-please">pretty please</button>
         </div>
 
-        <div id="please-wait" hidden="true">
-            <p>Please wait, Hat Kid is recording herself doing the dance…</p>
-            <progress id="progress"></progress>
-        </div>
-        <div id="results" hidden="true">
-            <div id="dance"></div>
-            <p>You can send this GIF to your friends using the link below:</p>
-            <a id="permalink">Link goes here</a>
-            <p>Have a cool day!</p>
-        </div>
-        <div id="error-results" hidden="true">
-            <p><strong>Error:</strong> <span id="error"></span></p>
-        </div>
+        <div id="results-box">
+            <div id="please-wait">
+                Generating the GIF…<br>
+                <span class="progress-bar" id="progress" role="progressbar" data-progress="indeterminate"></span>
+            </div>
 
-        <p>
-            <hr>
-            <a href="//{{root}}/man">Docs, details, and credits</a>
-        </p>
-    </div>
+            <div id="error">
+                <b>We're sorry! An error occured.</b>
+                <div id="error-text"></div>
+            </div>
 
-    {{{js}}}
+            <div id="final-result">
+                <p>Here's your image:</p>
+                <div>
+                    <img id="dance">
+                </div>
+                <p><a id="permalink">Direct link</a></p>
+                <p>Have a cool day!</p>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <a href="//{{root}}/man">docs, details, and credits</a>
+    </footer>
+
+    {{{include_js}}}
 </body>
 
 </html>

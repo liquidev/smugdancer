@@ -1,57 +1,319 @@
 :root {
-    --font-family: 'Segoe UI', system-ui, sans-serif;
+    --font-family: 'Lexend', 'Segoe UI', system-ui, sans-serif;
+
+    --background: #4a3ebd;
+    --background-error: #bd443e;
+    --text: white;
+    --selection: rgba(255, 255, 255, 15%);
+
+    --box-background: rgba(0, 0, 0, 15%);
+    --box-roundness: 16px;
+
+    --pill-border: rgba(255, 255, 255, 50%);
+
+    --button-background: rgba(255, 255, 255, 15%);
+    --button-hover-text: var(--background);
+    --button-hover-background: var(--text);
+    --button-pressed-background: rgba(255, 255, 255, 50%);
+
+    --progress-bar-background: rgba(255, 255, 255, 15%);
+    --progress-bar-fill: white;
+
+    --tap-0: transparent;
+    --tap-1: #ff574f;
+    --tap-2: #ff9e4f;
+    --tap-3: #ffcb4f;
+    --tap-4: #5dff4f;
+    --tap-5: #4fd6ff;
+    --tap-6: #4f8cff;
+    --tap-7: #c84fff;
+    --tap-8: #ffffff;
 }
 
+/* Boilerplate. */
+
+body {
+    margin: 0;
+}
+
+a {
+    color: var(--text);
+}
+
+input,
+button {
+    font: inherit;
+    font-weight: 600;
+}
+
+p {
+    margin-top: 0;
+}
+
+p:last-child {
+    margin-bottom: 0;
+}
+
+/* Common styling */
+
 html {
+    color: var(--text);
+
     font-family: var(--font-family);
+    font-size: 24px;
 }
 
 body {
-    margin: 0 auto;
-    padding-bottom: 13em;
-    max-width: 720px;
-    text-align: justify;
-    color: #222222;
+    background-color: var(--background);
 }
 
-h1 {
+@keyframes error-animation {
+    0% {
+        background-color: var(--background);
+    }
+
+    10% {
+        background-color: var(--background-error);
+    }
+
+    90% {
+        background-color: var(--background-error);
+    }
+
+    100% {
+        background-color: var(--background);
+    }
+}
+
+body[data-state='error'] {
+    animation: error-animation 1.5s;
+}
+
+input {
+    background-color: transparent;
+    color: inherit;
+
+    border: none;
+
+    text-align: center;
+    outline: none;
+}
+
+button {
+    padding: 0.2em 0.5em;
+
+    background-color: var(--button-background);
+    color: var(--text);
+
+    border: none;
+    border-radius: 100px;
+
+    transition: background-color 0.1s, color 0.1s;
+}
+
+button:hover {
+    background-color: var(--button-hover-background);
+    color: var(--button-hover-text);
+}
+
+button:active {
+    background-color: var(--button-pressed-background);
+}
+
+::selection {
+    background-color: var(--selection);
+}
+
+/* Positioning of sections */
+
+main {
+    width: 100%;
+}
+
+main.application {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+
+    margin-top: 40vh;
+
     text-align: center;
 }
 
-blockquote {
-    width: auto;
-    border-left: 4px solid #eeeeee;
-    padding-left: 24px;
+.center-of-page {
+    position: relative;
+    top: 50%;
 }
 
-#results,
-#content {
-    text-align: center;
+footer {
+    position: fixed;
+    left: 1em;
+    bottom: 1em;
 }
 
-#permalink {
+/* Footer look and feel */
+
+footer {
     font-size: 16px;
+    opacity: 60%;
 }
 
-#error-results {
-    color: #550000;
+footer a {
+    text-decoration: none;
 }
 
-hr {
-    margin-top: 3em;
-    border: 1px solid #eeeeee;
+/* Layout of the tempo selection stuff */
+
+#tempo-selection {
+    margin-bottom: 1em;
+
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
 }
 
-#dance {
-    margin-top: 1em;
+.input-form-separator {
+    margin: 0 1em 0 1em;
 }
 
-#input-form,
-#input-form>* {
-    font-size: 16px;
-    font-family: var(--font-family);
+/* Tempo pill look and feel */
+
+.input-pill {
+    padding: 0 0.35em;
+    height: 56px;
+    max-height: 56px;
+
+    border: 4px solid var(--pill-border);
+    border-radius: 100px;
+
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+/* Direct tempo input */
+
+#bpm-input-pill {
+    padding: 0 0.5em;
 }
 
 #bpm {
-    width: 5em;
+    width: 2.5em;
+}
+
+#bpm-drag {
+    padding-left: 0.3em;
+    padding-right: 0.3em;
+    cursor: ew-resize;
+    user-select: none;
+}
+
+/* Tempo tapper */
+
+@keyframes beat {
+    0% {
+        transform: scale(200%);
+    }
+
+    100% {
+        transform: scale(100%);
+    }
+}
+
+.tap {
+    box-sizing: border-box;
+
+    width: 12px;
+    height: 12px;
+
+    margin-left: 0.4em;
+
+    border: 3px solid var(--text);
+    border-radius: 100px;
+
+    transition: 0.1s background-color;
+    transform-origin: center;
+}
+
+.tap:last-child {
+    margin-right: 0.3em;
+}
+
+#tap-tempo {
+    height: calc(100% - 0.5em);
+}
+
+/* Button must be big and shiny. */
+
+#pretty-please {
+    padding: 0.5em 1em;
+}
+
+/* Result boxes use a background thingo */
+
+#results-box {
+    width: fit-content;
+    padding: 1em;
+    margin-top: 1em;
+
+    background-color: var(--box-background);
+    border-radius: var(--box-roundness);
+
+    transition: 0.25s opacity;
+
+    opacity: 0%;
+}
+
+/* Progress bar */
+
+.progress-bar {
+    display: inline-block;
+
+    width: 256px;
+    height: 8px;
+
+    border-radius: 100px;
+}
+
+@keyframes progress-bar-indeterminate {
+    0% {
+        background-position: 0%;
+    }
+
+    100% {
+        background-position: 150%;
+    }
+}
+
+.progress-bar[data-progress='indeterminate'] {
+    background-image: repeating-linear-gradient(90deg,
+            var(--progress-bar-background),
+            var(--progress-bar-fill),
+            var(--progress-bar-background));
+    background-size: 200% 100%;
+    animation: progress-bar-indeterminate 2s linear infinite;
+}
+
+/* Results box */
+
+#results-box {
+    margin-top: 3em;
+    margin-bottom: 20vh;
+}
+
+body:not([data-state='idle']) #results-box {
+    opacity: 100%;
+}
+
+#please-wait,
+#error,
+#final-result {
+    display: none;
+}
+
+body[data-state='loading'] #please-wait,
+body[data-state='error'] #error,
+body[data-state='done'] #final-result {
+    display: block;
 }
