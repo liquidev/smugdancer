@@ -15,6 +15,7 @@ function getLink(bpm) {
     return `${window.location.protocol}//{{{root}}}/${bpm}.gif`
 }
 
+let rendered = false
 function loadSmugDance() {
     document.body.dataset.state = "loading"
 
@@ -29,7 +30,7 @@ function loadSmugDance() {
     const xhr = new XMLHttpRequest()
     xhr.responseType = "arraybuffer"
     progress.dataset.progress = "indeterminate"
-    progress.style.removeProperty("backgroundImage")
+    progress.style.removeProperty("background-image")
     xhr.onprogress = (event) => {
         if (event.lengthComputable) {
             progress.dataset.progress = "specific"
