@@ -1,6 +1,6 @@
 [server]
 port = 8080
-root = "localhost:8080"
+root = ""
 reverse_proxy = false
 rate_limiting = false  # REMOVE IN PROD
 

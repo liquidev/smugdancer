@@ -12,7 +12,7 @@ const errorText = document.getElementById("error-text")
 const finalResultBox = document.getElementById("final-result")
 
 function getLink(bpm) {
-    return `${window.location.protocol}//{{{root}}}/${bpm}.gif`
+    return `{{{root}}}/${bpm}.gif`
 }
 
 let rendered = false
